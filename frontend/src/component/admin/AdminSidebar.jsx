@@ -4,67 +4,84 @@ function AdminSidebar({ authUser, usersCount, ordersCount, deliveryPartnersCount
   const menuItems = [
     { id: 'overview', label: 'Overview', icon: SquaresFour },
     { id: 'orders', label: 'Orders', icon: ClipboardText, count: ordersCount },
-    { id: 'delivery-partners', label: 'Delivery Partners', icon: Truck, count: deliveryPartnersCount },
+    { id: 'delivery-partners', label: 'Delivery', icon: Truck, count: deliveryPartnersCount },
     { id: 'users', label: 'Users', icon: Users, count: usersCount },
     { id: 'categories', label: 'Categories', icon: Tag },
-    { id: 'subcategories', label: 'SubCategories', icon: FolderPlus },
+    { id: 'subcategories', label: 'Sub-Categories', icon: FolderPlus },
     { id: 'products', label: 'Products', icon: Package },
     { id: 'insights', label: 'Insights', icon: ChartPieSlice },
   ]
 
+  const initials = (authUser?.username?.[0] || 'A').toUpperCase()
+
   return (
-    <aside className="flex h-full flex-col border-r border-emerald-100 bg-white/90 backdrop-blur">
-      <div className="border-b border-emerald-100 px-6 py-6">
-        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-700">Admin Workspace</p>
-        <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-900">Shubham Supermarket</h1>
+    <aside className="flex h-full flex-col bg-gray-900">
+      {/* Brand */}
+      <div className="border-b border-gray-800 px-6 py-5">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Admin Panel</p>
+        <h1 className="mt-1 text-base font-semibold text-white leading-tight">Shubham Supermarket</h1>
       </div>
 
-      <div className="px-4 py-5">
-        <div className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-lime-50 p-4">
-          <p className="text-sm font-bold text-slate-900">{authUser?.username || 'Admin'}</p>
-          <p className="mt-1 truncate text-xs text-slate-600">{authUser?.email}</p>
+      {/* User profile */}
+      <div className="border-b border-gray-800 px-4 py-4">
+        <div className="flex items-center gap-3 rounded-lg bg-gray-800 px-3 py-2.5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-sm font-bold text-white select-none">
+            {initials}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-white">{authUser?.username || 'Admin'}</p>
+            <p className="truncate text-xs text-gray-400">{authUser?.email}</p>
+          </div>
         </div>
+      </div>
 
-        <nav className="mt-6 space-y-2">
+      {/* Navigation */}
+      <nav className="flex-1 overflow-y-auto px-3 py-4">
+        <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-gray-600">Navigation</p>
+        <ul className="space-y-0.5">
           {menuItems.map((item) => {
             const Icon = item.icon
             const isActive = activeSection === item.id
-
             return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => onSectionChange(item.id)}
-                className={`flex w-full items-center justify-between rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                  isActive
-                    ? 'bg-emerald-600 text-white'
-                    : 'text-slate-700 hover:bg-emerald-50 hover:text-emerald-700'
-                }`}
-              >
-                <span className="flex items-center gap-3">
-                  <Icon size={18} weight="bold" />
-                  {item.label}
-                </span>
-
-                {typeof item.count === 'number' ? (
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${isActive ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
-                    {item.count}
+              <li key={item.id}>
+                <button
+                  type="button"
+                  onClick={() => onSectionChange(item.id)}
+                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+                    isActive
+                      ? 'bg-emerald-500/10 text-emerald-400 font-medium'
+                      : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100'
+                  }`}
+                >
+                  <span className="flex items-center gap-3">
+                    <Icon size={16} weight={isActive ? 'fill' : 'regular'} />
+                    {item.label}
                   </span>
-                ) : null}
-              </button>
+                  {typeof item.count === 'number' && (
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${
+                        isActive ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-800 text-gray-400'
+                      }`}
+                    >
+                      {item.count}
+                    </span>
+                  )}
+                </button>
+              </li>
             )
           })}
-        </nav>
-      </div>
+        </ul>
+      </nav>
 
-      <div className="mt-auto border-t border-emerald-100 p-4">
+      {/* Sign out */}
+      <div className="border-t border-gray-800 p-4">
         <button
           type="button"
           onClick={onLogout}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 px-4 py-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-100"
         >
-          <SignOut size={18} weight="bold" />
-          Logout
+          <SignOut size={16} />
+          Sign out
         </button>
       </div>
     </aside>
