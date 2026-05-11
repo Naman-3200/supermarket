@@ -56,6 +56,21 @@ const productSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    sku: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    stock: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    lowStockThreshold: {
+      type: Number,
+      default: 10,
+      min: 0,
+    },
   },
   {
     timestamps: true,

@@ -44,6 +44,9 @@ const createProduct = asyncHandler(async (req, res) => {
     images,
     thumbnail: images[0],
     isActive: isActive !== undefined ? isActive : true,
+    sku: req.body.sku ? String(req.body.sku).trim() : '',
+    stock: req.body.stock !== undefined ? Number(req.body.stock) : 0,
+    lowStockThreshold: req.body.lowStockThreshold !== undefined ? Number(req.body.lowStockThreshold) : 10,
   })
 
   return res.status(201).json({
@@ -93,7 +96,7 @@ const getProductById = asyncHandler(async (req, res) => {
 
 const updateProduct = asyncHandler(async (req, res) => {
   const { id } = req.params
-  const { name, description, price, discount, unit, images, isActive, subCategoryId } = req.body
+  const { name, description, price, discount, unit, images, isActive, subCategoryId, sku, stock, lowStockThreshold } = req.body
   const hasSubCategoryField = Object.prototype.hasOwnProperty.call(req.body, 'subCategoryId')
   const normalizedSubCategoryId = String(subCategoryId || '').trim()
 
@@ -121,6 +124,9 @@ const updateProduct = asyncHandler(async (req, res) => {
       images: Array.isArray(images) ? images : undefined,
       thumbnail: Array.isArray(images) && images.length ? images[0] : undefined,
       isActive: isActive !== undefined ? isActive : undefined,
+      sku: sku !== undefined ? String(sku).trim() : undefined,
+      stock: stock !== undefined ? Number(stock) : undefined,
+      lowStockThreshold: lowStockThreshold !== undefined ? Number(lowStockThreshold) : undefined,
     },
     { new: true, runValidators: true },
   )

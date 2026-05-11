@@ -1,4 +1,6 @@
-import { MagnifyingGlass } from '@phosphor-icons/react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
+import { MagnifyingGlass, Pencil, Trash, X, Check, LockSimple, LockSimpleOpen } from '@phosphor-icons/react'
+import { API_PATHS, buildApiUrl } from '../../config/apiEndpoints'
 
 const ROLE_STYLES = {
   admin: 'bg-violet-50 text-violet-700 border border-violet-200',
@@ -6,95 +8,261 @@ const ROLE_STYLES = {
   user: 'bg-gray-100 text-gray-600 border border-gray-200',
 }
 
-function formatDate(value) {
-  if (!value) return '—'
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return '—'
-  return parsed.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+function fmt(v) {
+  if (!v) return '—'
+  const d = new Date(v)
+  return isNaN(d) ? '—' : d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-function renderRows(isLoading, error, users) {
-  if (isLoading) {
-    return (
-      <tr>
-        <td colSpan={5} className="px-4 py-10 text-center text-sm text-gray-400">
-          <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
-        </td>
-      </tr>
-    )
+function EditModal({ user, onClose, onSaved }) {
+  const [form, setForm] = useState({ username: user.username || '', email: user.email || '', phone: user.phone || '', vehicleNumber: user.vehicleNumber || '' })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const token = localStorage.getItem('authToken')
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+    setError('')
+    try {
+      const res = await fetch(buildApiUrl(API_PATHS.auth.update.replace(':id', user.id)), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(form),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.message || 'Failed to update'); setSaving(false); return }
+      onSaved(data.user)
+    } catch (_) {
+      setError('Something went wrong')
+      setSaving(false)
+    }
   }
-  if (error) {
-    return (
-      <tr>
-        <td colSpan={5} className="px-4 py-8 text-center text-sm text-red-600">{error}</td>
-      </tr>
-    )
-  }
-  if (!users.length) {
-    return (
-      <tr>
-        <td colSpan={5} className="px-4 py-10 text-center text-sm text-gray-400">No users found.</td>
-      </tr>
-    )
-  }
-  return users.map((user) => (
-    <tr key={user.id} className="transition-colors hover:bg-gray-50">
-      <td className="px-4 py-3 font-medium text-gray-900">{user.username}</td>
-      <td className="px-4 py-3 text-gray-600">{user.email}</td>
-      <td className="px-4 py-3 text-gray-600">{user.phone || '—'}</td>
-      <td className="px-4 py-3">
-        <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium capitalize ${ROLE_STYLES[user.role] || ROLE_STYLES.user}`}>
-          {user.role}
-        </span>
-      </td>
-      <td className="px-4 py-3 text-gray-500">{formatDate(user.createdAt)}</td>
-    </tr>
-  ))
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+          <h2 className="text-base font-semibold text-gray-900">Edit User</h2>
+          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X size={16} /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-3 p-5">
+          {[
+            { id: 'username', label: 'Username', type: 'text' },
+            { id: 'email', label: 'Email', type: 'email' },
+            { id: 'phone', label: 'Phone', type: 'text' },
+          ].map(({ id, label, type }) => (
+            <div key={id}>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500" htmlFor={`edit-${id}`}>{label}</label>
+              <input
+                id={`edit-${id}`}
+                type={type}
+                value={form[id]}
+                onChange={(e) => setForm((p) => ({ ...p, [id]: e.target.value }))}
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+              />
+            </div>
+          ))}
+          {user.role === 'delivery' && (
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500" htmlFor="edit-vehicle">Vehicle Number</label>
+              <input
+                id="edit-vehicle"
+                type="text"
+                value={form.vehicleNumber}
+                onChange={(e) => setForm((p) => ({ ...p, vehicleNumber: e.target.value }))}
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+              />
+            </div>
+          )}
+          {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={onClose} className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
+            <button type="submit" disabled={saving} className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-gray-900 py-2.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60">
+              {saving ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <Check size={14} weight="bold" />}
+              {saving ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
 }
 
-function AdminUsersTable({ users, query, onQueryChange, isLoading, error }) {
+function AdminUsersTable({ roleFilter }) {
+  const [users, setUsers] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
+  const [editingUser, setEditingUser] = useState(null)
+  const [actionLoading, setActionLoading] = useState('')
+  const token = localStorage.getItem('authToken')
+
+  const fetchUsers = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const url = roleFilter
+        ? `${API_PATHS.auth.users}?role=${roleFilter}`
+        : API_PATHS.auth.users
+      const res = await fetch(buildApiUrl(url), { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
+      if (res.ok) setUsers(Array.isArray(data.users) ? data.users : [])
+      else setError(data.message || 'Failed to load users')
+    } catch (_) {
+      setError('Failed to load users')
+    } finally {
+      setLoading(false)
+    }
+  }, [token, roleFilter])
+
+  useEffect(() => { fetchUsers() }, [fetchUsers])
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return users
+    return users.filter((u) =>
+      [u.username, u.email, u.phone, u.role].filter(Boolean).some((v) => String(v).toLowerCase().includes(q)),
+    )
+  }, [users, search])
+
+  const handleToggleBlock = async (user) => {
+    if (!confirm(`${user.isBlocked ? 'Unblock' : 'Block'} "${user.username}"?`)) return
+    setActionLoading(user.id)
+    try {
+      const res = await fetch(buildApiUrl(API_PATHS.auth.toggleBlock.replace(':id', user.id)), {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, isBlocked: data.user.isBlocked } : u)))
+      }
+    } catch (_) {}
+    setActionLoading('')
+  }
+
+  const handleDelete = async (user) => {
+    if (!confirm(`Permanently delete "${user.username}"? This cannot be undone.`)) return
+    setActionLoading(user.id)
+    try {
+      const res = await fetch(buildApiUrl(API_PATHS.auth.delete.replace(':id', user.id)), {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) setUsers((prev) => prev.filter((u) => u.id !== user.id))
+    } catch (_) {}
+    setActionLoading('')
+  }
+
+  const handleSaved = (updated) => {
+    setUsers((prev) => prev.map((u) => (u.id === updated.id ? { ...u, ...updated } : u)))
+    setEditingUser(null)
+  }
+
+  const label = roleFilter === 'user' ? 'Customers' : roleFilter === 'delivery' ? 'Delivery Partners' : 'All Users'
+
   return (
     <section className="space-y-5">
+      {editingUser && <EditModal user={editingUser} onClose={() => setEditingUser(null)} onSaved={handleSaved} />}
+
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Directory</p>
-          <h2 className="mt-0.5 text-xl font-semibold text-gray-900">Registered Users</h2>
+          <h2 className="mt-0.5 text-xl font-semibold text-gray-900">{label}</h2>
+          <p className="mt-0.5 text-sm text-gray-500">{users.length} registered</p>
         </div>
         <div className="relative w-full sm:w-72">
-          <MagnifyingGlass
-            size={16}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-          />
+          <MagnifyingGlass size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name, email, phone…"
             className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
           />
         </div>
       </div>
 
+      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
-            <thead>
-              <tr className="bg-gray-50">
+            <thead className="bg-gray-50">
+              <tr>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Name</th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Email</th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Phone</th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Role</th>
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Status</th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Joined</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 bg-white">
-              {renderRows(isLoading, error, users)}
+              {loading ? (
+                <tr><td colSpan={7} className="py-10 text-center text-sm text-gray-400">
+                  <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
+                </td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={7} className="py-10 text-center text-sm text-gray-400">No users found.</td></tr>
+              ) : filtered.map((user) => (
+                <tr key={user.id} className={`transition-colors hover:bg-gray-50 ${user.isBlocked ? 'opacity-60' : ''}`}>
+                  <td className="px-4 py-3 font-medium text-gray-900">{user.username}</td>
+                  <td className="px-4 py-3 text-gray-600">{user.email}</td>
+                  <td className="px-4 py-3 text-gray-600">{user.phone || '—'}</td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium capitalize ${ROLE_STYLES[user.role] || ROLE_STYLES.user}`}>
+                      {user.role}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${user.isBlocked ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+                      {user.isBlocked ? 'Blocked' : 'Active'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-gray-500">{fmt(user.createdAt)}</td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    {user.role !== 'admin' && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleBlock(user)}
+                          disabled={actionLoading === user.id}
+                          title={user.isBlocked ? 'Unblock' : 'Block'}
+                          className={`mr-1 inline-flex items-center rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${user.isBlocked ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'}`}
+                        >
+                          {user.isBlocked ? <LockSimpleOpen size={13} className="mr-1" /> : <LockSimple size={13} className="mr-1" />}
+                          {user.isBlocked ? 'Unblock' : 'Block'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingUser(user)}
+                          className="mr-1 inline-flex items-center rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                        >
+                          <Pencil size={13} className="mr-1" /> Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(user)}
+                          disabled={actionLoading === user.id}
+                          className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+                        >
+                          <Trash size={13} className="mr-1" /> Delete
+                        </button>
+                      </>
+                    )}
+                    {user.role === 'admin' && <span className="text-xs text-gray-400">Admin</span>}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
-        {users.length > 0 && (
+        {filtered.length > 0 && (
           <div className="border-t border-gray-200 bg-gray-50 px-4 py-2.5">
-            <p className="text-xs text-gray-400">{users.length} user{users.length !== 1 ? 's' : ''} shown</p>
+            <p className="text-xs text-gray-400">{filtered.length} user{filtered.length !== 1 ? 's' : ''} shown</p>
           </div>
         )}
       </div>

@@ -91,7 +91,7 @@ const assignDeliveryPartner = asyncHandler(async (req, res) => {
 // Admin or assigned delivery partner: update order status
 const updateOrderStatus = asyncHandler(async (req, res) => {
   const { orderStatus } = req.body
-  const validStatuses = ['placed', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled']
+  const validStatuses = ['placed', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'failed_delivery']
 
   if (!validStatuses.includes(orderStatus)) {
     return res.status(400).json({ message: 'Invalid order status' })
@@ -102,20 +102,57 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
     return res.status(404).json({ message: 'Order not found' })
   }
 
-  // Delivery partner can only update their own assigned orders and only move forward
   if (req.user.role === 'delivery') {
     if (!order.assignedDeliveryPartner || String(order.assignedDeliveryPartner) !== String(req.user._id)) {
       return res.status(403).json({ message: 'This order is not assigned to you' })
     }
-    const allowedByDelivery = ['shipped', 'delivered']
+    // processing = accepted/going to pickup, shipped = out for delivery, delivered, failed_delivery
+    const allowedByDelivery = ['processing', 'shipped', 'delivered', 'failed_delivery']
     if (!allowedByDelivery.includes(orderStatus)) {
-      return res.status(403).json({ message: 'Delivery partners can only mark orders as shipped or delivered' })
+      return res.status(403).json({ message: 'Not allowed' })
     }
   }
 
   order.orderStatus = orderStatus
   await order.save()
   res.json({ message: 'Order status updated', order })
+})
+
+// Delivery partner: reject an assigned order (unassigns self, reverts to placed)
+const rejectDeliveryOrder = asyncHandler(async (req, res) => {
+  const order = await Order.findById(req.params.id)
+  if (!order) return res.status(404).json({ message: 'Order not found' })
+
+  if (!order.assignedDeliveryPartner || String(order.assignedDeliveryPartner) !== String(req.user._id)) {
+    return res.status(403).json({ message: 'This order is not assigned to you' })
+  }
+
+  if (['delivered', 'cancelled', 'failed_delivery'].includes(order.orderStatus)) {
+    return res.status(400).json({ message: 'Cannot reject a completed order' })
+  }
+
+  order.assignedDeliveryPartner = null
+  order.orderStatus = 'placed'
+  await order.save()
+  res.json({ message: 'Delivery rejected, order returned to queue', order })
+})
+
+// Admin or delivery partner: attach proof image / failure reason to order
+const addDeliveryProof = asyncHandler(async (req, res) => {
+  const { proofImageUrl, failureReason } = req.body
+  const order = await Order.findById(req.params.id)
+  if (!order) return res.status(404).json({ message: 'Order not found' })
+
+  if (req.user.role === 'delivery') {
+    if (!order.assignedDeliveryPartner || String(order.assignedDeliveryPartner) !== String(req.user._id)) {
+      return res.status(403).json({ message: 'This order is not assigned to you' })
+    }
+  }
+
+  if (proofImageUrl !== undefined) order.deliveryProofImage = proofImageUrl
+  if (failureReason !== undefined) order.failureReason = failureReason
+  await order.save()
+  res.json({ message: 'Delivery proof updated', order })
 })
 
 module.exports = {
@@ -126,4 +163,6 @@ module.exports = {
   getDeliveryOrders,
   assignDeliveryPartner,
   updateOrderStatus,
+  rejectDeliveryOrder,
+  addDeliveryProof,
 }

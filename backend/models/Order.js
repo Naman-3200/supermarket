@@ -37,11 +37,13 @@ const orderSchema = new mongoose.Schema(
     paymentStatus: { type: String, enum: ['pending', 'paid', 'failed'], default: 'pending' },
     orderStatus: {
       type: String,
-      enum: ['placed', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'],
+      enum: ['placed', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'failed_delivery'],
       default: 'placed',
     },
     totalAmount: { type: Number, required: true, min: 0 },
     assignedDeliveryPartner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    deliveryProofImage: { type: String, default: '' },
+    failureReason: { type: String, default: '' },
   },
   { timestamps: true },
 )

@@ -35,6 +35,23 @@ const userSchema = new mongoose.Schema(
       maxlength: 30,
       default: '',
     },
+    isBlocked: {
+      type: Boolean,
+      default: false,
+    },
+    deliveryStatus: {
+      type: String,
+      enum: ['offline', 'online', 'break'],
+      default: 'offline',
+    },
+    shiftStart: {
+      type: String,
+      default: '',
+    },
+    shiftEnd: {
+      type: String,
+      default: '',
+    },
     password: {
       type: String,
       required: true,
@@ -69,6 +86,11 @@ userSchema.methods.toSafeObject = function toSafeObject() {
     phone: this.phone,
     role: this.role,
     vehicleNumber: this.vehicleNumber,
+    isBlocked: this.isBlocked,
+    deliveryStatus: this.deliveryStatus,
+    shiftStart: this.shiftStart,
+    shiftEnd: this.shiftEnd,
+    createdAt: this.createdAt,
   }
 }
 

@@ -6,8 +6,14 @@ const API_PATHS = {
     signup: '/api/auth/signup',
     users: '/api/auth/users',
     me: '/api/auth/me',
+    toggleBlock: '/api/auth/:id/toggle-block',
+    update: '/api/auth/:id',
+    delete: '/api/auth/:id',
   },
   health: '/api/health',
+  analytics: {
+    dashboard: '/api/analytics/dashboard',
+  },
   categories: {
     list: '/api/categories',
     create: '/api/categories',
@@ -40,6 +46,20 @@ const API_PATHS = {
     all: '/api/orders',
     assign: '/api/orders/:id/assign',
     updateStatus: '/api/orders/:id/status',
+    rejectDelivery: '/api/orders/:id/reject-delivery',
+    proof: '/api/orders/:id/proof',
+  },
+  delivery: {
+    analytics: '/api/delivery/analytics',
+    availability: '/api/delivery/availability',
+  },
+  coupons: {
+    list: '/api/coupons',
+    create: '/api/coupons',
+    getById: '/api/coupons/:id',
+    update: '/api/coupons/:id',
+    delete: '/api/coupons/:id',
+    validate: '/api/coupons/validate',
   },
 }
 

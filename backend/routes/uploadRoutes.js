@@ -13,6 +13,6 @@ const upload = multer({
   },
 })
 
-router.post('/', protect, restrictTo('admin'), upload.array('images', 5), uploadImages)
+router.post('/', protect, restrictTo('admin', 'delivery'), upload.array('images', 5), uploadImages)
 
 module.exports = router

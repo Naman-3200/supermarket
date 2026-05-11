@@ -1,6 +1,6 @@
 const express = require('express')
 const { body } = require('express-validator')
-const { signup, login, getCurrentUser, getAllUsers } = require('../controllers/authController')
+const { signup, login, getCurrentUser, getAllUsers, toggleBlockUser, updateUser, deleteUser } = require('../controllers/authController')
 const validateRequest = require('../middlewares/validateRequest')
 const { protect, restrictTo } = require('../middlewares/authMiddleware')
 
@@ -37,5 +37,8 @@ router.post(
 
 router.get('/me', protect, getCurrentUser)
 router.get('/users', protect, restrictTo('admin'), getAllUsers)
+router.patch('/:id/toggle-block', protect, restrictTo('admin'), toggleBlockUser)
+router.put('/:id', protect, restrictTo('admin'), updateUser)
+router.delete('/:id', protect, restrictTo('admin'), deleteUser)
 
 module.exports = router
