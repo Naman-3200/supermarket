@@ -24,6 +24,16 @@ const deliveryAddressSchema = new mongoose.Schema(
   { _id: false },
 )
 
+const returnRequestSchema = new mongoose.Schema(
+  {
+    reason: { type: String, default: '' },
+    requestedAt: { type: Date },
+    status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+    resolvedAt: { type: Date },
+  },
+  { _id: false },
+)
+
 const orderSchema = new mongoose.Schema(
   {
     orderNumber: { type: String, unique: true },
@@ -33,17 +43,43 @@ const orderSchema = new mongoose.Schema(
       validate: [(v) => v.length > 0, 'Order must have at least one item'],
     },
     deliveryAddress: { type: deliveryAddressSchema, required: true },
-    paymentMethod: { type: String, enum: ['cod', 'online'], required: true },
-    paymentStatus: { type: String, enum: ['pending', 'paid', 'failed'], default: 'pending' },
+    paymentMethod: { type: String, enum: ['cod', 'online', 'wallet', 'razorpay'], required: true },
+    paymentStatus: { type: String, enum: ['pending', 'paid', 'failed', 'refunded'], default: 'pending' },
     orderStatus: {
       type: String,
-      enum: ['placed', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'failed_delivery'],
-      default: 'placed',
+      enum: [
+        'pending',
+        'placed',
+        'confirmed',
+        'processing',
+        'packed',
+        'shipped',
+        'out_for_delivery',
+        'delivered',
+        'cancelled',
+        'returned',
+        'refunded',
+        'failed_delivery',
+      ],
+      default: 'pending',
     },
+    subtotal: { type: Number, required: true, min: 0 },
+    deliveryCharge: { type: Number, default: 0 },
+    taxAmount: { type: Number, default: 0 },
+    couponCode: { type: String, default: '' },
+    couponDiscount: { type: Number, default: 0 },
+    walletAmountUsed: { type: Number, default: 0 },
     totalAmount: { type: Number, required: true, min: 0 },
+    orderNotes: { type: String, default: '' },
     assignedDeliveryPartner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     deliveryProofImage: { type: String, default: '' },
     failureReason: { type: String, default: '' },
+    cancelReason: { type: String, default: '' },
+    cancelledAt: { type: Date },
+    returnRequest: { type: returnRequestSchema, default: null },
+    refundAmount: { type: Number, default: 0 },
+    razorpayOrderId: { type: String, default: '' },
+    razorpayPaymentId: { type: String, default: '' },
   },
   { timestamps: true },
 )

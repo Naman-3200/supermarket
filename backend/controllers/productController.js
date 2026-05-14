@@ -56,26 +56,33 @@ const createProduct = asyncHandler(async (req, res) => {
 })
 
 const getAllProducts = asyncHandler(async (req, res) => {
-  const { categoryId, subCategoryId } = req.query
+  const { categoryId, subCategoryId, search, limit, sort } = req.query
 
   const filter = {}
 
-  if (categoryId) {
-    filter.categoryId = categoryId
+  if (categoryId) filter.categoryId = categoryId
+  if (subCategoryId) filter.subCategoryId = subCategoryId
+  if (search) {
+    filter.$or = [
+      { name: { $regex: search, $options: 'i' } },
+      { description: { $regex: search, $options: 'i' } },
+    ]
   }
 
-  if (subCategoryId) {
-    filter.subCategoryId = subCategoryId
-  }
+  let sortOption = { createdAt: -1 }
+  if (sort === 'discount') sortOption = { discount: -1 }
+  else if (sort === 'price_asc') sortOption = { price: 1 }
+  else if (sort === 'price_desc') sortOption = { price: -1 }
+
+  const maxLimit = Math.min(Number(limit) || 100, 100)
 
   const products = await Product.find(filter)
     .populate('categoryId', 'name')
     .populate('subCategoryId', 'name')
-    .sort({ createdAt: -1 })
+    .sort(sortOption)
+    .limit(maxLimit)
 
-  return res.status(200).json({
-    products,
-  })
+  return res.status(200).json({ products })
 })
 
 const getProductById = asyncHandler(async (req, res) => {
