@@ -1,11 +1,25 @@
 const Order = require('../models/Order')
 const User = require('../models/User')
+const Settings = require('../models/Settings')
 const asyncHandler = require('../utils/asyncHandler')
 
 const MIN_ORDER_AMOUNT = 99
-const FREE_DELIVERY_THRESHOLD = 499
-const DELIVERY_CHARGE = 40
-const TAX_RATE = 0.05 // 5%
+const DEFAULT_DELIVERY_CHARGE = 40
+const DEFAULT_FREE_DELIVERY_THRESHOLD = 499
+
+async function getDeliverySettings() {
+  const settings = await Settings.find({ key: { $in: ['deliveryCharge', 'freeDeliveryThreshold'] } }).lean()
+  const map = {}
+  for (const s of settings) map[s.key] = s.value
+  return {
+    deliveryCharge: map.deliveryCharge ?? DEFAULT_DELIVERY_CHARGE,
+    freeDeliveryThreshold: map.freeDeliveryThreshold ?? DEFAULT_FREE_DELIVERY_THRESHOLD,
+  }
+}
+
+function generateOtp() {
+  return String(Math.floor(1000 + Math.random() * 9000))
+}
 
 const createOrder = asyncHandler(async (req, res) => {
   const {
@@ -34,12 +48,12 @@ const createOrder = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: `Minimum order amount is ₹${MIN_ORDER_AMOUNT}` })
   }
 
-  const deliveryCharge = validSubtotal >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_CHARGE
-  const taxAmount = parseFloat((validSubtotal * TAX_RATE).toFixed(2))
+  const { deliveryCharge: DC, freeDeliveryThreshold: FDT } = await getDeliverySettings()
+  const deliveryCharge = validSubtotal >= FDT ? 0 : DC
+
   const validCouponDiscount = Number(couponDiscount) || 0
   const validWalletUsed = Number(walletAmountUsed) || 0
 
-  // Validate wallet balance
   if (validWalletUsed > 0) {
     const user = await User.findById(req.user._id)
     if (user.wallet.balance < validWalletUsed) {
@@ -48,7 +62,7 @@ const createOrder = asyncHandler(async (req, res) => {
   }
 
   const totalAmount = parseFloat(
-    (validSubtotal + deliveryCharge + taxAmount - validCouponDiscount - validWalletUsed).toFixed(2),
+    (validSubtotal + deliveryCharge - validCouponDiscount - validWalletUsed).toFixed(2),
   )
 
   const order = await Order.create({
@@ -60,7 +74,7 @@ const createOrder = asyncHandler(async (req, res) => {
     orderStatus: 'pending',
     subtotal: validSubtotal,
     deliveryCharge,
-    taxAmount,
+    taxAmount: 0,
     couponCode: couponCode || '',
     couponDiscount: validCouponDiscount,
     walletAmountUsed: validWalletUsed,
@@ -70,7 +84,6 @@ const createOrder = asyncHandler(async (req, res) => {
     razorpayPaymentId: razorpayPaymentId || '',
   })
 
-  // Deduct wallet if used
   if (validWalletUsed > 0) {
     await User.findByIdAndUpdate(req.user._id, {
       $inc: { 'wallet.balance': -validWalletUsed },
@@ -88,10 +101,9 @@ const createOrder = asyncHandler(async (req, res) => {
   res.status(201).json({ message: 'Order placed successfully', order })
 })
 
-// Razorpay order creation
 const createRazorpayOrder = asyncHandler(async (req, res) => {
   const Razorpay = require('razorpay')
-  const { amount } = req.body // amount in paise
+  const { amount } = req.body
 
   if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
     return res.status(503).json({ message: 'Payment gateway not configured' })
@@ -157,7 +169,6 @@ const cancelOrder = asyncHandler(async (req, res) => {
   order.cancelReason = reason || 'Cancelled by customer'
   order.cancelledAt = new Date()
 
-  // Refund wallet if wallet was used
   if (order.walletAmountUsed > 0) {
     await User.findByIdAndUpdate(req.user._id, {
       $inc: { 'wallet.balance': order.walletAmountUsed },
@@ -172,7 +183,6 @@ const cancelOrder = asyncHandler(async (req, res) => {
     })
   }
 
-  // Refund if online payment
   if (order.paymentStatus === 'paid' && order.paymentMethod !== 'cod') {
     order.paymentStatus = 'refunded'
     order.refundAmount = order.totalAmount
@@ -195,11 +205,10 @@ const requestReturn = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Return already requested for this order' })
   }
 
-  // Check within 7 days of delivery
   const deliveredAt = order.updatedAt
-  const daysSinceDelivery = (Date.now() - deliveredAt.getTime()) / (1000 * 60 * 60 * 24)
-  if (daysSinceDelivery > 7) {
-    return res.status(400).json({ message: 'Return window has expired (7 days)' })
+  const hoursSinceDelivery = (Date.now() - deliveredAt.getTime()) / (1000 * 60 * 60)
+  if (hoursSinceDelivery > 24) {
+    return res.status(400).json({ message: 'Return window has expired (24 hours from delivery)' })
   }
 
   order.orderStatus = 'returned'
@@ -209,23 +218,80 @@ const requestReturn = asyncHandler(async (req, res) => {
   res.json({ message: 'Return request submitted', order })
 })
 
+const verifyDeliveryOtp = asyncHandler(async (req, res) => {
+  const { otp } = req.body
+  const order = await Order.findById(req.params.id)
+  if (!order) return res.status(404).json({ message: 'Order not found' })
+
+  if (req.user.role === 'delivery') {
+    if (!order.assignedDeliveryPartner || String(order.assignedDeliveryPartner) !== String(req.user._id)) {
+      return res.status(403).json({ message: 'This order is not assigned to you' })
+    }
+  }
+
+  if (!order.deliveryOtp) {
+    return res.status(400).json({ message: 'No OTP generated for this order' })
+  }
+
+  if (String(otp) !== String(order.deliveryOtp)) {
+    return res.status(400).json({ message: 'Invalid OTP' })
+  }
+
+  order.deliveryOtpVerified = true
+  await order.save()
+  res.json({ message: 'OTP verified successfully' })
+})
+
 const getOrderInvoice = asyncHandler(async (req, res) => {
   const order = await Order.findOne({ _id: req.params.id, userId: req.user._id })
     .populate('assignedDeliveryPartner', 'username phone')
+    .populate('items.productId', 'hsnCode gstRate')
   if (!order) return res.status(404).json({ message: 'Order not found' })
 
   const itemRows = order.items
-    .map(
-      (item) => `
+    .map((item) => {
+      const hsnCode = item.productId?.hsnCode || ''
+      const gstRate = item.productId?.gstRate || 0
+      const lineTotal = item.price * item.quantity
+      const taxableBase = gstRate > 0 ? parseFloat((lineTotal * 100 / (100 + gstRate)).toFixed(2)) : lineTotal
+      const gstAmount = gstRate > 0 ? parseFloat((lineTotal - taxableBase).toFixed(2)) : 0
+      return `
     <tr>
-      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${item.name}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${item.name}${hsnCode ? `<br/><span style="font-size:10px;color:#94a3b8">HSN: ${hsnCode}</span>` : ''}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center">${item.unit || '-'}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center">${item.quantity}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right">₹${Number(item.price).toFixed(2)}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right">₹${(item.price * item.quantity).toFixed(2)}</td>
-    </tr>`,
-    )
+      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right">₹${lineTotal.toFixed(2)}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right">${gstRate > 0 ? `${gstRate}%` : 'Nil'}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right">${gstAmount > 0 ? `₹${gstAmount.toFixed(2)}` : '—'}</td>
+    </tr>`
+    })
     .join('')
+
+  const totalGst = order.items.reduce((sum, item) => {
+    const gstRate = item.productId?.gstRate || 0
+    if (!gstRate) return sum
+    const lineTotal = item.price * item.quantity
+    const taxableBase = lineTotal * 100 / (100 + gstRate)
+    return sum + (lineTotal - taxableBase)
+  }, 0)
+
+  const gstBreakdown = {}
+  for (const item of order.items) {
+    const gstRate = item.productId?.gstRate || 0
+    if (!gstRate) continue
+    const lineTotal = item.price * item.quantity
+    const taxableBase = lineTotal * 100 / (100 + gstRate)
+    const gstAmt = lineTotal - taxableBase
+    gstBreakdown[gstRate] = (gstBreakdown[gstRate] || 0) + gstAmt
+  }
+
+  const gstRows = Object.entries(gstBreakdown).map(([rate, amt]) => `
+    <tr>
+      <td style="padding:6px 12px;border-bottom:1px solid #f1f5f9">GST @ ${rate}%</td>
+      <td style="padding:6px 12px;border-bottom:1px solid #f1f5f9;text-align:right">Included in price</td>
+      <td style="padding:6px 12px;border-bottom:1px solid #f1f5f9;text-align:right">₹${Number(amt).toFixed(2)}</td>
+    </tr>`).join('')
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -241,11 +307,11 @@ const getOrderInvoice = asyncHandler(async (req, res) => {
   .section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#94a3b8;margin-bottom:8px}
   table{width:100%;border-collapse:collapse}
   th{padding:10px 12px;background:#f1f5f9;text-align:left;font-size:12px;font-weight:700;color:#475569}
-  th:nth-child(3),th:nth-child(4),th:nth-child(5){text-align:center}
-  th:nth-child(4),th:nth-child(5){text-align:right}
-  .totals{width:300px;margin-left:auto;margin-top:16px}
+  .totals{width:320px;margin-left:auto;margin-top:16px}
   .totals tr td{padding:6px 12px;font-size:13px}
   .totals tr:last-child td{font-weight:700;font-size:15px;border-top:2px solid #e2e8f0;padding-top:10px}
+  .gst-table{margin-top:24px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}
+  .gst-table th{background:#f8fafc}
   .badge{display:inline-block;padding:3px 10px;border-radius:9999px;font-size:11px;font-weight:700;background:#d1fae5;color:#065f46}
   @media print{body{padding:0}}
 </style>
@@ -255,6 +321,7 @@ const getOrderInvoice = asyncHandler(async (req, res) => {
   <div>
     <div class="brand">Shubham Supermarket</div>
     <div class="invoice-title">TAX INVOICE</div>
+    <div style="font-size:11px;color:#64748b;margin-top:2px">Charni Road, Mumbai – 400004</div>
   </div>
   <div style="text-align:right">
     <div style="font-size:20px;font-weight:700">#${order.orderNumber}</div>
@@ -276,6 +343,7 @@ const getOrderInvoice = asyncHandler(async (req, res) => {
     <div style="font-size:13px"><b>Method:</b> ${order.paymentMethod.toUpperCase()}</div>
     <div style="font-size:13px"><b>Status:</b> ${order.paymentStatus.toUpperCase()}</div>
     ${order.couponCode ? `<div style="font-size:13px"><b>Coupon:</b> ${order.couponCode}</div>` : ''}
+    <div style="font-size:11px;color:#64748b;margin-top:6px">* All prices are inclusive of GST</div>
   </div>
 </div>
 
@@ -287,6 +355,8 @@ const getOrderInvoice = asyncHandler(async (req, res) => {
       <th style="text-align:center">Qty</th>
       <th style="text-align:right">Rate</th>
       <th style="text-align:right">Amount</th>
+      <th style="text-align:right">GST %</th>
+      <th style="text-align:right">GST (incl.)</th>
     </tr>
   </thead>
   <tbody>${itemRows}</tbody>
@@ -295,14 +365,37 @@ const getOrderInvoice = asyncHandler(async (req, res) => {
 <table class="totals">
   <tr><td>Subtotal</td><td style="text-align:right">₹${Number(order.subtotal || order.totalAmount).toFixed(2)}</td></tr>
   ${order.deliveryCharge > 0 ? `<tr><td>Delivery Charge</td><td style="text-align:right">₹${order.deliveryCharge.toFixed(2)}</td></tr>` : '<tr><td>Delivery</td><td style="text-align:right;color:#059669">Free</td></tr>'}
-  <tr><td>Tax (5% GST)</td><td style="text-align:right">₹${Number(order.taxAmount || 0).toFixed(2)}</td></tr>
   ${order.couponDiscount > 0 ? `<tr><td>Coupon Discount</td><td style="text-align:right;color:#059669">–₹${order.couponDiscount.toFixed(2)}</td></tr>` : ''}
   ${order.walletAmountUsed > 0 ? `<tr><td>Wallet Used</td><td style="text-align:right;color:#059669">–₹${order.walletAmountUsed.toFixed(2)}</td></tr>` : ''}
   <tr><td>Total</td><td style="text-align:right">₹${Number(order.totalAmount).toFixed(2)}</td></tr>
 </table>
 
+${totalGst > 0 ? `
+<div class="gst-table" style="margin-top:32px">
+  <div style="padding:10px 12px;background:#f8fafc;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#475569;border-bottom:1px solid #e2e8f0">
+    GST Summary (Included in Product Prices)
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>GST Rate</th>
+        <th style="text-align:right">Basis</th>
+        <th style="text-align:right">Tax Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${gstRows}
+      <tr style="background:#f8fafc;font-weight:700">
+        <td style="padding:8px 12px">Total GST (Incl.)</td>
+        <td style="padding:8px 12px;text-align:right">—</td>
+        <td style="padding:8px 12px;text-align:right">₹${totalGst.toFixed(2)}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>` : ''}
+
 <div style="margin-top:48px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;text-align:center">
-  Thank you for shopping with Shubham Supermarket! &nbsp;|&nbsp; For support, contact us at support@shubhamsupermarket.in
+  Thank you for shopping with Shubham Supermarket! &nbsp;|&nbsp; Charni Road, Mumbai – 400004
 </div>
 
 <script>window.onload = function(){ window.print() }</script>
@@ -371,9 +464,25 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
     if (!allowedByDelivery.includes(orderStatus)) {
       return res.status(403).json({ message: 'Not allowed' })
     }
+
+    if (orderStatus === 'delivered') {
+      if (!order.deliveryOtpVerified) {
+        return res.status(400).json({ message: 'OTP verification required before marking as delivered' })
+      }
+    }
   }
 
   order.orderStatus = orderStatus
+
+  if (orderStatus === 'shipped' && !order.deliveryOtp) {
+    order.deliveryOtp = generateOtp()
+    order.deliveryOtpVerified = false
+  }
+
+  if (orderStatus === 'delivered' && order.paymentMethod === 'cod') {
+    order.paymentStatus = 'paid'
+  }
+
   await order.save()
   res.json({ message: 'Order status updated', order })
 })
@@ -422,6 +531,7 @@ module.exports = {
   getDeliveryOrders,
   cancelOrder,
   requestReturn,
+  verifyDeliveryOtp,
   getOrderInvoice,
   reorder,
   assignDeliveryPartner,

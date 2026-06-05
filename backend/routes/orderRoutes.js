@@ -3,7 +3,7 @@ const {
   createOrder, createRazorpayOrder,
   getUserOrders, getOrderById,
   getAllOrders, getDeliveryOrders,
-  cancelOrder, requestReturn, getOrderInvoice, reorder,
+  cancelOrder, requestReturn, verifyDeliveryOtp, getOrderInvoice, reorder,
   assignDeliveryPartner, updateOrderStatus, rejectDeliveryOrder, addDeliveryProof,
 } = require('../controllers/orderController')
 const { protect, restrictTo } = require('../middlewares/authMiddleware')
@@ -24,6 +24,7 @@ router.get('/:id/reorder', restrictTo('user'), reorder)
 // Delivery partner routes
 router.get('/delivery-orders', restrictTo('delivery'), getDeliveryOrders)
 router.patch('/:id/reject-delivery', restrictTo('delivery'), rejectDeliveryOrder)
+router.post('/:id/verify-otp', restrictTo('delivery', 'admin'), verifyDeliveryOtp)
 
 // Admin routes
 router.get('/', restrictTo('admin'), getAllOrders)

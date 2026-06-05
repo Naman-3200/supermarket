@@ -62,10 +62,21 @@ const API_PATHS = {
     return: '/api/orders/:id/return',
     invoice: '/api/orders/:id/invoice',
     reorder: '/api/orders/:id/reorder',
+    verifyOtp: '/api/orders/:id/verify-otp',
   },
   delivery: {
     analytics: '/api/delivery/analytics',
     availability: '/api/delivery/availability',
+  },
+  settings: {
+    get: '/api/settings',
+    update: '/api/settings',
+  },
+  withdrawals: {
+    create: '/api/withdrawals',
+    myRequests: '/api/withdrawals/my-requests',
+    all: '/api/withdrawals',
+    update: '/api/withdrawals/:id',
   },
   coupons: {
     list: '/api/coupons',

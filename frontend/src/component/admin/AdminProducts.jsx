@@ -17,7 +17,7 @@ function AdminProducts() {
   const [formData, setFormData] = useState({
     name: '', description: '', price: '', discount: '0', unit: 'kg',
     categoryId: '', subCategoryId: '', isActive: true,
-    sku: '', stock: '0', lowStockThreshold: '10',
+    sku: '', hsnCode: '', gstRate: '0', stock: '0', lowStockThreshold: '10',
   })
   const [productImageFiles, setProductImageFiles] = useState([])
   const [existingImageUrls, setExistingImageUrls] = useState([])
@@ -94,6 +94,8 @@ function AdminProducts() {
         subCategoryId: formData.subCategoryId || undefined,
         isActive: formData.isActive, images: uploadedImageUrls,
         sku: formData.sku || '',
+        hsnCode: formData.hsnCode || '',
+        gstRate: Number.parseFloat(formData.gstRate) || 0,
         stock: parseInt(formData.stock, 10) || 0,
         lowStockThreshold: parseInt(formData.lowStockThreshold, 10) || 10,
       }
@@ -110,7 +112,7 @@ function AdminProducts() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.message || 'Unable to save product')
 
-      setFormData({ name: '', description: '', price: '', discount: '0', unit: 'kg', categoryId: '', subCategoryId: '', isActive: true, sku: '', stock: '0', lowStockThreshold: '10' })
+      setFormData({ name: '', description: '', price: '', discount: '0', unit: 'kg', categoryId: '', subCategoryId: '', isActive: true, sku: '', hsnCode: '', gstRate: '0', stock: '0', lowStockThreshold: '10' })
       setProductImageFiles([])
       setExistingImageUrls([])
       setEditingProductId('')
@@ -132,8 +134,8 @@ function AdminProducts() {
       price: product.price ?? '', discount: product.discount ?? '0',
       unit: product.unit || 'kg', categoryId, subCategoryId,
       isActive: product.isActive ?? true,
-      sku: product.sku || '', stock: String(product.stock ?? 0),
-      lowStockThreshold: String(product.lowStockThreshold ?? 10),
+      sku: product.sku || '', hsnCode: product.hsnCode || '', gstRate: String(product.gstRate ?? 0),
+      stock: String(product.stock ?? 0), lowStockThreshold: String(product.lowStockThreshold ?? 10),
     })
     await fetchSubCategories(categoryId)
   }
@@ -168,7 +170,7 @@ function AdminProducts() {
 
   const handleCloseForm = () => {
     setShowForm(false)
-    setFormData({ name: '', description: '', price: '', discount: '0', unit: 'kg', categoryId: '', subCategoryId: '', isActive: true, sku: '', stock: '0', lowStockThreshold: '10' })
+    setFormData({ name: '', description: '', price: '', discount: '0', unit: 'kg', categoryId: '', subCategoryId: '', isActive: true, sku: '', hsnCode: '', gstRate: '0', stock: '0', lowStockThreshold: '10' })
     setProductImageFiles([])
     setExistingImageUrls([])
     setEditingProductId('')
@@ -263,6 +265,24 @@ function AdminProducts() {
                 <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500" htmlFor="prod-sku">SKU</label>
                 <input id="prod-sku" name="sku" type="text" placeholder="e.g. VEG-001" value={formData.sku} onChange={handleChange}
                   className="mt-1.5 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
+              </div>
+              {/* HSN Code */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500" htmlFor="prod-hsn">HSN Code</label>
+                <input id="prod-hsn" name="hsnCode" type="text" placeholder="e.g. 1001" value={formData.hsnCode} onChange={handleChange}
+                  className="mt-1.5 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
+              </div>
+              {/* GST Rate */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500" htmlFor="prod-gst">GST Rate (%)</label>
+                <select id="prod-gst" name="gstRate" value={formData.gstRate} onChange={handleChange}
+                  className="mt-1.5 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900/10">
+                  <option value="0">0% (Nil/Exempt)</option>
+                  <option value="5">5%</option>
+                  <option value="12">12%</option>
+                  <option value="18">18%</option>
+                  <option value="28">28%</option>
+                </select>
               </div>
               {/* Unit */}
               <div>
@@ -366,9 +386,10 @@ function AdminProducts() {
                 <tr>
                   <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Image</th>
                   <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Name</th>
-                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">SKU</th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">SKU / HSN</th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">GST</th>
                   <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Category</th>
-                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Price</th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Price (incl. GST)</th>
                   <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Stock</th>
                   <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Status</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Actions</th>
@@ -386,7 +407,11 @@ function AdminProducts() {
                           : <div className="h-10 w-10 rounded-lg bg-gray-100 border border-gray-200" />}
                       </td>
                       <td className="px-4 py-3 font-medium text-gray-900">{product.name}</td>
-                      <td className="px-4 py-3 text-gray-500 font-mono text-xs">{product.sku || '—'}</td>
+                      <td className="px-4 py-3 text-gray-500 font-mono text-xs">
+                        <div>{product.sku || '—'}</div>
+                        {product.hsnCode && <div className="text-gray-400">HSN: {product.hsnCode}</div>}
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 text-xs">{product.gstRate > 0 ? `${product.gstRate}%` : 'Nil'}</td>
                       <td className="px-4 py-3 text-gray-500">{getCategoryName(product.categoryId)}</td>
                       <td className="px-4 py-3 text-gray-700">
                         ₹{Number(product.price || 0).toFixed(2)}

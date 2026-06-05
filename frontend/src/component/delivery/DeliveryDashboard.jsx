@@ -47,9 +47,12 @@ function fmtTime(d) {
   return new Date(d).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
 }
 
+const WAREHOUSE_LOCATION = 'Charni Road, Mumbai, Maharashtra 400004, India'
+
 function buildMapsUrl(addr) {
-  const q = encodeURIComponent(`${addr.addressLine}, ${addr.city}, ${addr.state} ${addr.pincode}`)
-  return `https://www.google.com/maps/search/?api=1&query=${q}`
+  const origin = encodeURIComponent(WAREHOUSE_LOCATION)
+  const dest = encodeURIComponent(`${addr.addressLine}, ${addr.city}, ${addr.state} ${addr.pincode}`)
+  return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&travelmode=driving`
 }
 
 // ─── Small shared components ──────────────────────────────────────────────────
@@ -111,6 +114,9 @@ function EarningsBarChart({ data }) {
 function ProofModal({ order, token, onClose, onSuccess }) {
   const [preview, setPreview] = useState(null)
   const [file, setFile] = useState(null)
+  const [otp, setOtp] = useState('')
+  const [otpVerified, setOtpVerified] = useState(false)
+  const [verifyingOtp, setVerifyingOtp] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const fileRef = useRef()
@@ -122,7 +128,29 @@ function ProofModal({ order, token, onClose, onSuccess }) {
     setPreview(URL.createObjectURL(f))
   }
 
+  const handleVerifyOtp = async () => {
+    if (!otp.trim()) { setError('Enter the OTP from the customer'); return }
+    setVerifyingOtp(true)
+    setError('')
+    try {
+      const res = await fetch(buildApiUrl(API_PATHS.orders.verifyOtp.replace(':id', order._id)), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ otp }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || 'Invalid OTP')
+      setOtpVerified(true)
+      setError('')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setVerifyingOtp(false)
+    }
+  }
+
   const handleConfirm = async () => {
+    if (!otpVerified) { setError('Please verify the customer OTP first'); return }
     setUploading(true)
     setError('')
     try {
@@ -142,7 +170,6 @@ function ProofModal({ order, token, onClose, onSuccess }) {
         proofImageUrl = upData.images?.[0]?.url || ''
       }
 
-      // Attach proof then mark delivered
       if (proofImageUrl) {
         await fetch(buildApiUrl(API_PATHS.orders.proof.replace(':id', order._id)), {
           method: 'PATCH',
@@ -181,32 +208,65 @@ function ProofModal({ order, token, onClose, onSuccess }) {
         </div>
 
         <div className="p-5 space-y-4">
+          {/* OTP Verification */}
+          <div className={`rounded-xl border p-4 ${otpVerified ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+            <p className="text-xs font-semibold text-gray-700 mb-2">
+              {otpVerified ? '✅ OTP Verified' : 'Step 1: Enter Customer OTP'}
+            </p>
+            {!otpVerified && (
+              <>
+                <p className="text-xs text-gray-500 mb-3">Ask the customer for the 4-digit OTP shown in their order details.</p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    placeholder="4-digit OTP"
+                    maxLength={4}
+                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-center font-mono tracking-widest focus:border-amber-400 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleVerifyOtp}
+                    disabled={verifyingOtp || otp.length !== 4}
+                    className="rounded-lg bg-amber-500 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-600 disabled:opacity-50"
+                  >
+                    {verifyingOtp ? '…' : 'Verify'}
+                  </button>
+                </div>
+              </>
+            )}
+            {otpVerified && <p className="text-xs text-emerald-700">Customer OTP confirmed. You can now complete delivery.</p>}
+          </div>
+
           {/* Photo capture */}
-          <div>
-            <p className="text-xs font-semibold text-gray-600 mb-2">Proof of Delivery (optional)</p>
-            {preview ? (
-              <div className="relative">
-                <img src={preview} alt="proof" className="w-full h-40 object-cover rounded-xl border border-gray-200" />
+          {otpVerified && (
+            <div>
+              <p className="text-xs font-semibold text-gray-600 mb-2">Step 2: Proof of Delivery (optional)</p>
+              {preview ? (
+                <div className="relative">
+                  <img src={preview} alt="proof" className="w-full h-40 object-cover rounded-xl border border-gray-200" />
+                  <button
+                    type="button"
+                    onClick={() => { setPreview(null); setFile(null) }}
+                    className="absolute top-2 right-2 rounded-full bg-black/50 p-1 text-white"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ) : (
                 <button
                   type="button"
-                  onClick={() => { setPreview(null); setFile(null) }}
-                  className="absolute top-2 right-2 rounded-full bg-black/50 p-1 text-white"
+                  onClick={() => fileRef.current?.click()}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-300 py-6 text-sm text-gray-500 hover:border-amber-400 hover:text-amber-600 transition-colors"
                 >
-                  <X size={12} />
+                  <Camera size={20} />
+                  Take Photo / Choose from Gallery
                 </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-300 py-6 text-sm text-gray-500 hover:border-amber-400 hover:text-amber-600 transition-colors"
-              >
-                <Camera size={20} />
-                Take Photo / Choose from Gallery
-              </button>
-            )}
-            <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
-          </div>
+              )}
+              <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
+            </div>
+          )}
 
           {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
 
@@ -217,7 +277,7 @@ function ProofModal({ order, token, onClose, onSuccess }) {
             <button
               type="button"
               onClick={handleConfirm}
-              disabled={uploading}
+              disabled={uploading || !otpVerified}
               className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
             >
               {uploading
@@ -745,9 +805,104 @@ function OrdersSection({ orders, setOrders, token }) {
   )
 }
 
+// ─── Withdrawal Form ──────────────────────────────────────────────────────────
+
+function WithdrawalForm({ token, onSubmitted }) {
+  const [form, setForm] = useState({ amount: '', paymentMethod: 'upi', upiId: '', bankAccountNumber: '', bankIfsc: '', bankAccountHolder: '', bankName: '' })
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setSubmitting(true)
+    setError('')
+    setSuccess('')
+    try {
+      const res = await fetch(buildApiUrl(API_PATHS.withdrawals.create), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(form),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || 'Failed to submit request')
+      setSuccess('Withdrawal request submitted! Admin will process it within 2-3 working days.')
+      setForm({ amount: '', paymentMethod: 'upi', upiId: '', bankAccountNumber: '', bankIfsc: '', bankAccountHolder: '', bankName: '' })
+      onSubmitted?.()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm space-y-4">
+      <h3 className="text-sm font-semibold text-gray-900">Request Withdrawal</h3>
+      <div>
+        <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Amount (₹) *</label>
+        <input type="number" min="1" value={form.amount} onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))} placeholder="Enter amount" required
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none" />
+      </div>
+      <div>
+        <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Payment Method *</label>
+        <div className="flex gap-3">
+          {[{ v: 'upi', l: 'UPI / GPay' }, { v: 'bank', l: 'Bank Transfer' }].map(({ v, l }) => (
+            <button key={v} type="button" onClick={() => setForm((p) => ({ ...p, paymentMethod: v }))}
+              className={`flex-1 rounded-lg border py-2 text-sm font-medium transition-colors ${form.paymentMethod === v ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+      {form.paymentMethod === 'upi' && (
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">UPI ID / GPay Number *</label>
+          <input type="text" value={form.upiId} onChange={(e) => setForm((p) => ({ ...p, upiId: e.target.value }))} placeholder="e.g. name@upi or 9876543210@ok" required
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none" />
+        </div>
+      )}
+      {form.paymentMethod === 'bank' && (
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Account Holder Name *</label>
+            <input type="text" value={form.bankAccountHolder} onChange={(e) => setForm((p) => ({ ...p, bankAccountHolder: e.target.value }))} placeholder="Full name as on bank account" required
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Account Number *</label>
+            <input type="text" value={form.bankAccountNumber} onChange={(e) => setForm((p) => ({ ...p, bankAccountNumber: e.target.value }))} placeholder="Bank account number" required
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">IFSC Code *</label>
+              <input type="text" value={form.bankIfsc} onChange={(e) => setForm((p) => ({ ...p, bankIfsc: e.target.value.toUpperCase() }))} placeholder="e.g. HDFC0001234" required
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Bank Name</label>
+              <input type="text" value={form.bankName} onChange={(e) => setForm((p) => ({ ...p, bankName: e.target.value }))} placeholder="e.g. HDFC Bank"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none" />
+            </div>
+          </div>
+        </div>
+      )}
+      {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
+      {success && <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{success}</p>}
+      <button type="submit" disabled={submitting}
+        className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 py-2.5 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-60">
+        {submitting ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : null}
+        {submitting ? 'Submitting…' : 'Submit Withdrawal Request'}
+      </button>
+    </form>
+  )
+}
+
 // ─── Earnings Section ─────────────────────────────────────────────────────────
 
-function EarningsSection({ analytics }) {
+function EarningsSection({ analytics, token }) {
+  const [showWithdrawal, setShowWithdrawal] = useState(false)
   if (!analytics) return <div className="flex justify-center py-16"><span className="h-6 w-6 animate-spin rounded-full border-2 border-gray-900 border-t-transparent" /></div>
 
   return (
@@ -832,8 +987,18 @@ function EarningsSection({ analytics }) {
         <ul className="space-y-1 list-disc list-inside">
           <li>Flat rate of ₹{DELIVERY_FEE} per successfully delivered order.</li>
           <li>Failed deliveries, cancellations, and rejected orders are not counted.</li>
-          <li>Payouts are processed weekly by the admin team.</li>
+          <li>Submit a withdrawal request to receive your earnings via UPI or bank transfer.</li>
         </ul>
+      </div>
+
+      {/* Withdraw */}
+      <div>
+        <button type="button" onClick={() => setShowWithdrawal((v) => !v)}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-amber-400 py-3 text-sm font-semibold text-amber-700 hover:bg-amber-50 transition-colors">
+          <Wallet size={18} weight="fill" />
+          {showWithdrawal ? 'Hide Withdrawal Form' : 'Withdraw Earnings'}
+        </button>
+        {showWithdrawal && <div className="mt-4"><WithdrawalForm token={token} onSubmitted={() => setShowWithdrawal(false)} /></div>}
       </div>
     </section>
   )
@@ -1187,7 +1352,7 @@ function DeliveryDashboard() {
       case 'orders':
         return <OrdersSection orders={orders} setOrders={setOrders} token={token} />
       case 'earnings':
-        return <EarningsSection analytics={analytics} />
+        return <EarningsSection analytics={analytics} token={token} />
       case 'availability':
         return <AvailabilitySection deliveryUser={deliveryUser} setDeliveryUser={setDeliveryUser} token={token} />
       case 'notifications':

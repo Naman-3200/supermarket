@@ -8,7 +8,6 @@ import { API_PATHS, buildApiUrl } from '../../config/apiEndpoints'
 const MIN_ORDER = 99
 const FREE_DELIVERY_THRESHOLD = 499
 const DELIVERY_CHARGE = 40
-const TAX_RATE = 0.05
 
 function RazorpayModal({ amount, onSuccess, onClose, authUser }) {
   const [processing, setProcessing] = useState(false)
@@ -170,9 +169,8 @@ function CheckoutPage() {
 
   const subtotal = useMemo(() => cartItems.reduce((s, i) => s + Number(i.price || 0) * Number(i.quantity || 1), 0), [cartItems])
   const deliveryCharge = subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_CHARGE
-  const tax = parseFloat((subtotal * TAX_RATE).toFixed(2))
-  const walletUsed = useWallet ? Math.min(walletBalance, Math.max(0, subtotal + deliveryCharge + tax - couponDiscount)) : 0
-  const total = Math.max(0, subtotal + deliveryCharge + tax - couponDiscount - walletUsed)
+  const walletUsed = useWallet ? Math.min(walletBalance, Math.max(0, subtotal + deliveryCharge - couponDiscount)) : 0
+  const total = Math.max(0, subtotal + deliveryCharge - couponDiscount - walletUsed)
 
   const validateForm = () => {
     const e = {}
@@ -425,7 +423,7 @@ function CheckoutPage() {
               ))}
             </div>
             <div className="mt-4 space-y-2 border-t border-slate-100 pt-4 text-sm">
-              {[['Subtotal', `₹${subtotal.toFixed(2)}`], ['Delivery', deliveryCharge === 0 ? 'Free' : `₹${deliveryCharge}`], ['Tax (5%)', `₹${tax.toFixed(2)}`]].map(([l, v]) => (
+              {[['Subtotal (incl. GST)', `₹${subtotal.toFixed(2)}`], ['Delivery', deliveryCharge === 0 ? 'Free' : `₹${deliveryCharge}`]].map(([l, v]) => (
                 <div key={l} className="flex justify-between text-slate-600">
                   <span>{l}</span>
                   <span className={`font-semibold ${v === 'Free' ? 'text-emerald-700' : ''}`}>{v}</span>

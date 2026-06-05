@@ -1,6 +1,6 @@
 import {
   ChartBar, SignOut, SquaresFour, Users, FolderPlus, Tag, Package,
-  ClipboardText, Truck, Warehouse, Ticket, CreditCard, FileText, UserCircle,
+  ClipboardText, Truck, Warehouse, Ticket, CreditCard, FileText, UserCircle, Gear, CurrencyInr,
 } from '@phosphor-icons/react'
 
 const NAV_GROUPS = [
@@ -39,6 +39,13 @@ const NAV_GROUPS = [
     items: [
       { id: 'reports', label: 'Reports', icon: FileText },
       { id: 'insights', label: 'Insights', icon: ChartBar },
+    ],
+  },
+  {
+    label: 'Settings',
+    items: [
+      { id: 'settings', label: 'Delivery Charge', icon: CurrencyInr },
+      { id: 'withdrawals', label: 'Withdrawals', icon: Gear, countKey: 'withdrawals' },
     ],
   },
 ]

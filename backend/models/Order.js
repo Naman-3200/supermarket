@@ -80,6 +80,8 @@ const orderSchema = new mongoose.Schema(
     refundAmount: { type: Number, default: 0 },
     razorpayOrderId: { type: String, default: '' },
     razorpayPaymentId: { type: String, default: '' },
+    deliveryOtp: { type: String, default: '' },
+    deliveryOtpVerified: { type: Boolean, default: false },
   },
   { timestamps: true },
 )

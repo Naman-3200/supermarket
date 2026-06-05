@@ -11,6 +11,8 @@ import AdminInventory from './AdminInventory'
 import AdminCoupons from './AdminCoupons'
 import AdminPayments from './AdminPayments'
 import AdminReports from './AdminReports'
+import AdminSettings from './AdminSettings'
+import AdminWithdrawals from './AdminWithdrawals'
 import { API_PATHS, buildApiUrl } from '../../config/apiEndpoints'
 
 // ─── SVG Chart Components ─────────────────────────────────────────────────────
@@ -509,6 +511,8 @@ function AdminDashboard() {
             {activeSection === 'coupons' && <AdminCoupons />}
             {activeSection === 'payments' && <AdminPayments />}
             {activeSection === 'reports' && <AdminReports />}
+            {activeSection === 'settings' && <AdminSettings />}
+            {activeSection === 'withdrawals' && <AdminWithdrawals />}
             {activeSection === 'insights' && <InsightsSection />}
           </div>
         </div>

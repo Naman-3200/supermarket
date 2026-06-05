@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { MagnifyingGlass, Pencil, Trash, X, Check, LockSimple, LockSimpleOpen } from '@phosphor-icons/react'
+import { MagnifyingGlass, Pencil, Trash, X, Check, LockSimple, LockSimpleOpen, Eye } from '@phosphor-icons/react'
 import { API_PATHS, buildApiUrl } from '../../config/apiEndpoints'
 
 const ROLE_STYLES = {
@@ -12,6 +12,80 @@ function fmt(v) {
   if (!v) return '—'
   const d = new Date(v)
   return isNaN(d) ? '—' : d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+function DetailModal({ user, onClose }) {
+  const isDelivery = user.role === 'delivery'
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-xl border border-gray-200 bg-white shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4 sticky top-0 bg-white">
+          <h2 className="text-base font-semibold text-gray-900">{isDelivery ? 'Delivery Partner Details' : 'Customer Details'}</h2>
+          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X size={16} /></button>
+        </div>
+        <div className="p-5 space-y-5">
+          {/* Profile */}
+          <div className="flex items-center gap-4">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xl font-bold text-emerald-700">
+              {user.username?.[0]?.toUpperCase()}
+            </div>
+            <div>
+              <p className="font-bold text-gray-900 text-lg">{user.username}</p>
+              <p className="text-sm text-gray-500">{user.email}</p>
+              <span className={`mt-1 inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium capitalize ${ROLE_STYLES[user.role] || ROLE_STYLES.user}`}>{user.role}</span>
+            </div>
+          </div>
+
+          {/* Contact & Basic Info */}
+          <div className="rounded-lg border border-gray-200 divide-y divide-gray-100">
+            {[
+              { label: 'Phone', value: user.phone || '—' },
+              { label: 'Account Status', value: user.isBlocked ? 'Blocked' : 'Active', highlight: user.isBlocked ? 'text-red-600' : 'text-emerald-600' },
+              { label: 'Joined', value: fmt(user.createdAt) },
+              ...(isDelivery ? [
+                { label: 'Vehicle Number', value: user.vehicleNumber || '—' },
+                { label: 'Delivery Status', value: user.deliveryStatus || 'offline', highlight: user.deliveryStatus === 'online' ? 'text-emerald-600' : user.deliveryStatus === 'break' ? 'text-amber-600' : 'text-gray-500' },
+                { label: 'Shift', value: user.shiftStart && user.shiftEnd ? `${user.shiftStart} – ${user.shiftEnd}` : '—' },
+              ] : []),
+            ].map(({ label, value, highlight }) => (
+              <div key={label} className="flex items-center justify-between px-4 py-3">
+                <p className="text-sm text-gray-500">{label}</p>
+                <p className={`text-sm font-medium ${highlight || 'text-gray-900'}`}>{value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Wallet */}
+          {!isDelivery && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600 mb-1">Wallet Balance</p>
+              <p className="text-2xl font-bold text-emerald-700">₹{Number(user.wallet?.balance || 0).toFixed(2)}</p>
+            </div>
+          )}
+
+          {/* Addresses */}
+          {!isDelivery && Array.isArray(user.addresses) && user.addresses.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Saved Addresses ({user.addresses.length})</p>
+              <div className="space-y-2">
+                {user.addresses.map((addr, i) => (
+                  <div key={i} className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-semibold text-gray-900">{addr.fullName}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${addr.label === 'home' ? 'bg-blue-100 text-blue-700' : addr.label === 'work' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>{addr.label}</span>
+                      {addr.isDefault && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Default</span>}
+                    </div>
+                    <p className="text-gray-600">{addr.addressLine}, {addr.city}, {addr.state} – {addr.pincode}</p>
+                    <p className="text-gray-500 text-xs mt-0.5">📞 {addr.phone}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function EditModal({ user, onClose, onSaved }) {
@@ -95,6 +169,7 @@ function AdminUsersTable({ roleFilter }) {
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [editingUser, setEditingUser] = useState(null)
+  const [viewingUser, setViewingUser] = useState(null)
   const [actionLoading, setActionLoading] = useState('')
   const token = localStorage.getItem('authToken')
 
@@ -165,6 +240,7 @@ function AdminUsersTable({ roleFilter }) {
   return (
     <section className="space-y-5">
       {editingUser && <EditModal user={editingUser} onClose={() => setEditingUser(null)} onSaved={handleSaved} />}
+      {viewingUser && <DetailModal user={viewingUser} onClose={() => setViewingUser(null)} />}
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -192,9 +268,10 @@ function AdminUsersTable({ roleFilter }) {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Name</th>
-                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Email</th>
-                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Phone</th>
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Contact</th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Role</th>
+                {roleFilter !== 'delivery' && <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Wallet</th>}
+                {roleFilter === 'delivery' && <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Vehicle / Status</th>}
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Status</th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Joined</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Actions</th>
@@ -202,28 +279,56 @@ function AdminUsersTable({ roleFilter }) {
             </thead>
             <tbody className="divide-y divide-gray-100 bg-white">
               {loading ? (
-                <tr><td colSpan={7} className="py-10 text-center text-sm text-gray-400">
+                <tr><td colSpan={8} className="py-10 text-center text-sm text-gray-400">
                   <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
                 </td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={7} className="py-10 text-center text-sm text-gray-400">No users found.</td></tr>
+                <tr><td colSpan={8} className="py-10 text-center text-sm text-gray-400">No users found.</td></tr>
               ) : filtered.map((user) => (
                 <tr key={user.id} className={`transition-colors hover:bg-gray-50 ${user.isBlocked ? 'opacity-60' : ''}`}>
-                  <td className="px-4 py-3 font-medium text-gray-900">{user.username}</td>
-                  <td className="px-4 py-3 text-gray-600">{user.email}</td>
-                  <td className="px-4 py-3 text-gray-600">{user.phone || '—'}</td>
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-gray-900">{user.username}</p>
+                    {roleFilter !== 'delivery' && user.addresses?.length > 0 && (
+                      <p className="text-xs text-gray-400">{user.addresses.length} address{user.addresses.length !== 1 ? 'es' : ''}</p>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="text-gray-600 text-xs">{user.email}</p>
+                    <p className="text-gray-500 text-xs">{user.phone || '—'}</p>
+                  </td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium capitalize ${ROLE_STYLES[user.role] || ROLE_STYLES.user}`}>
                       {user.role}
                     </span>
                   </td>
+                  {roleFilter !== 'delivery' && (
+                    <td className="px-4 py-3 text-sm font-medium text-emerald-700">
+                      ₹{Number(user.wallet?.balance || 0).toFixed(2)}
+                    </td>
+                  )}
+                  {roleFilter === 'delivery' && (
+                    <td className="px-4 py-3 text-xs text-gray-600">
+                      <p>{user.vehicleNumber || '—'}</p>
+                      <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium mt-0.5 ${user.deliveryStatus === 'online' ? 'bg-emerald-50 text-emerald-700' : user.deliveryStatus === 'break' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {user.deliveryStatus || 'offline'}
+                      </span>
+                    </td>
+                  )}
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${user.isBlocked ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
                       {user.isBlocked ? 'Blocked' : 'Active'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-gray-500">{fmt(user.createdAt)}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs">{fmt(user.createdAt)}</td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">
+                    <button
+                      type="button"
+                      onClick={() => setViewingUser(user)}
+                      className="mr-1 inline-flex items-center rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                      title="View full details"
+                    >
+                      <Eye size={13} className="mr-1" /> View
+                    </button>
                     {user.role !== 'admin' && (
                       <>
                         <button

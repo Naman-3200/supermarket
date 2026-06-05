@@ -237,6 +237,26 @@ function OrderDetailsPage() {
           </div>
         )}
 
+        {/* Delivery OTP — shown when order is shipped/out for delivery */}
+        {order.deliveryOtp && ['shipped', 'out_for_delivery'].includes(order.orderStatus) && !order.deliveryOtpVerified && (
+          <div className="mb-6 rounded-3xl border-2 border-amber-300 bg-amber-50 p-5 shadow-sm">
+            <h2 className="mb-2 text-base font-bold text-amber-800">Delivery OTP</h2>
+            <p className="text-xs text-amber-700 mb-3">Share this OTP with the delivery partner to confirm delivery. Do not share with anyone else.</p>
+            <div className="flex items-center justify-center gap-3">
+              {['d1','d2','d3','d4'].map((key, i) => (
+                <span key={key} className="flex h-12 w-12 items-center justify-center rounded-xl bg-white border-2 border-amber-300 text-2xl font-black text-amber-800 shadow-sm">
+                  {order.deliveryOtp[i]}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {order.deliveryOtpVerified && order.orderStatus === 'delivered' && (
+          <div className="mb-6 rounded-3xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+            <p className="text-sm font-semibold text-emerald-700">✅ OTP verified — delivery confirmed</p>
+          </div>
+        )}
+
         {/* Items */}
         <div className="mb-6 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
           <h2 className="mb-4 text-base font-bold text-slate-900">Items Ordered</h2>
@@ -261,9 +281,8 @@ function OrderDetailsPage() {
           <h2 className="mb-4 text-base font-bold text-slate-900">Bill Summary</h2>
           <div className="space-y-2 text-sm">
             {[
-              ['Subtotal', `₹${Number(order.subtotal || order.totalAmount).toFixed(2)}`],
+              ['Subtotal (incl. GST)', `₹${Number(order.subtotal || order.totalAmount).toFixed(2)}`],
               ['Delivery', order.deliveryCharge > 0 ? `₹${order.deliveryCharge}` : 'Free'],
-              ['Tax (5% GST)', `₹${Number(order.taxAmount || 0).toFixed(2)}`],
             ].map(([l, v]) => (
               <div key={l} className="flex justify-between text-slate-600">
                 <span>{l}</span>
