@@ -424,7 +424,7 @@ const reorder = asyncHandler(async (req, res) => {
 })
 
 const assignDeliveryPartner = asyncHandler(async (req, res) => {
-  const { deliveryPartnerId } = req.body
+  const { deliveryPartnerId, deliveryEarnings } = req.body
   const order = await Order.findById(req.params.id)
   if (!order) return res.status(404).json({ message: 'Order not found' })
 
@@ -435,6 +435,11 @@ const assignDeliveryPartner = asyncHandler(async (req, res) => {
     if (['pending', 'placed'].includes(order.orderStatus)) order.orderStatus = 'confirmed'
   } else {
     order.assignedDeliveryPartner = null
+  }
+
+  if (deliveryEarnings !== undefined && deliveryEarnings !== null) {
+    const val = Number(deliveryEarnings)
+    if (!isNaN(val) && val >= 0) order.deliveryEarnings = val
   }
 
   await order.save()

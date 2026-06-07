@@ -72,6 +72,7 @@ const orderSchema = new mongoose.Schema(
     totalAmount: { type: Number, required: true, min: 0 },
     orderNotes: { type: String, default: '' },
     assignedDeliveryPartner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    deliveryEarnings: { type: Number, default: null },
     deliveryProofImage: { type: String, default: '' },
     failureReason: { type: String, default: '' },
     cancelReason: { type: String, default: '' },
