@@ -533,7 +533,9 @@ function OrderCard({ order, token, onStatusChange }) {
             </div>
             <div className="text-right">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Your Earning</p>
-              <p className="text-lg font-bold text-emerald-600">₹{DELIVERY_FEE}</p>
+              <p className="text-lg font-bold text-emerald-600">
+                ₹{order.deliveryEarnings != null ? Number(order.deliveryEarnings).toFixed(2) : DELIVERY_FEE}
+              </p>
             </div>
           </div>
 
@@ -626,7 +628,9 @@ function OrderCard({ order, token, onStatusChange }) {
           {isDelivered && (
             <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
               <SealCheck size={16} weight="fill" className="text-emerald-600" />
-              <p className="text-xs font-semibold text-emerald-700">Delivered successfully · ₹{DELIVERY_FEE} earned</p>
+              <p className="text-xs font-semibold text-emerald-700">
+                Delivered successfully · ₹{order.deliveryEarnings != null ? Number(order.deliveryEarnings).toFixed(2) : DELIVERY_FEE} earned
+              </p>
             </div>
           )}
 
@@ -807,14 +811,21 @@ function OrdersSection({ orders, setOrders, token }) {
 
 // ─── Withdrawal Form ──────────────────────────────────────────────────────────
 
-function WithdrawalForm({ token, onSubmitted }) {
+function WithdrawalForm({ token, onSubmitted, walletBalance }) {
   const [form, setForm] = useState({ amount: '', paymentMethod: 'upi', upiId: '', bankAccountNumber: '', bankIfsc: '', bankAccountHolder: '', bankName: '' })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
+  const availableBalance = Number(walletBalance) || 0
+  const enteredAmount = parseFloat(form.amount) || 0
+  const overLimit = enteredAmount > availableBalance
+  const isInvalid = enteredAmount <= 0 || overLimit
+
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (overLimit) { setError(`Amount cannot exceed your wallet balance of ₹${availableBalance.toFixed(2)}`); return }
+    if (enteredAmount <= 0) { setError('Please enter a valid amount'); return }
     setSubmitting(true)
     setError('')
     setSuccess('')
@@ -839,10 +850,32 @@ function WithdrawalForm({ token, onSubmitted }) {
   return (
     <form onSubmit={handleSubmit} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm space-y-4">
       <h3 className="text-sm font-semibold text-gray-900">Request Withdrawal</h3>
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 flex items-center justify-between">
+        <span className="text-xs font-semibold text-emerald-700">Available Wallet Balance</span>
+        <span className="text-lg font-bold text-emerald-700">₹{availableBalance.toFixed(2)}</span>
+      </div>
       <div>
         <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Amount (₹) *</label>
-        <input type="number" min="1" value={form.amount} onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))} placeholder="Enter amount" required
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none" />
+        <input
+          type="number"
+          min="1"
+          max={availableBalance}
+          step="0.01"
+          value={form.amount}
+          onChange={(e) => {
+            setForm((p) => ({ ...p, amount: e.target.value }))
+            setError('')
+          }}
+          placeholder={`Max ₹${availableBalance.toFixed(2)}`}
+          required
+          className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none ${overLimit ? 'border-red-400 bg-red-50' : 'border-gray-300 focus:border-gray-400'}`}
+        />
+        {overLimit && (
+          <p className="mt-1 text-xs text-red-600">Amount exceeds your wallet balance of ₹{availableBalance.toFixed(2)}</p>
+        )}
+        {!overLimit && enteredAmount > 0 && (
+          <p className="mt-1 text-xs text-gray-500">Remaining after withdrawal: ₹{(availableBalance - enteredAmount).toFixed(2)}</p>
+        )}
       </div>
       <div>
         <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Payment Method *</label>
@@ -890,7 +923,7 @@ function WithdrawalForm({ token, onSubmitted }) {
       )}
       {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
       {success && <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{success}</p>}
-      <button type="submit" disabled={submitting}
+      <button type="submit" disabled={submitting || isInvalid}
         className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 py-2.5 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-60">
         {submitting ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : null}
         {submitting ? 'Submitting…' : 'Submit Withdrawal Request'}
@@ -903,6 +936,16 @@ function WithdrawalForm({ token, onSubmitted }) {
 
 function EarningsSection({ analytics, token }) {
   const [showWithdrawal, setShowWithdrawal] = useState(false)
+  const [walletBalance, setWalletBalance] = useState(0)
+
+  useEffect(() => {
+    if (!token) return
+    fetch(buildApiUrl(API_PATHS.auth.wallet), { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((d) => setWalletBalance(d.balance || 0))
+      .catch(() => {})
+  }, [token])
+
   if (!analytics) return <div className="flex justify-center py-16"><span className="h-6 w-6 animate-spin rounded-full border-2 border-gray-900 border-t-transparent" /></div>
 
   return (
@@ -934,6 +977,11 @@ function EarningsSection({ analytics, token }) {
           <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-600">Total Earned</p>
           <p className="mt-1.5 text-2xl font-bold text-emerald-700">₹{analytics.totalEarnings}</p>
           <p className="mt-0.5 text-xs text-emerald-600">{analytics.totalDelivered} total deliveries</p>
+        </div>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-600">Wallet Balance</p>
+          <p className="mt-1.5 text-2xl font-bold text-amber-700">₹{walletBalance.toFixed(2)}</p>
+          <p className="mt-0.5 text-xs text-amber-600">Available to withdraw</p>
         </div>
       </div>
 
@@ -998,7 +1046,7 @@ function EarningsSection({ analytics, token }) {
           <Wallet size={18} weight="fill" />
           {showWithdrawal ? 'Hide Withdrawal Form' : 'Withdraw Earnings'}
         </button>
-        {showWithdrawal && <div className="mt-4"><WithdrawalForm token={token} onSubmitted={() => setShowWithdrawal(false)} /></div>}
+        {showWithdrawal && <div className="mt-4"><WithdrawalForm token={token} walletBalance={walletBalance} onSubmitted={() => { setShowWithdrawal(false); fetch(buildApiUrl(API_PATHS.auth.wallet), { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()).then(d => setWalletBalance(d.balance || 0)).catch(() => {}) }} /></div>}
       </div>
     </section>
   )

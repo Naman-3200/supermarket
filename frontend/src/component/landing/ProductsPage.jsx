@@ -132,11 +132,16 @@ function ProductsPage() {
   }
 
   const getStatusLabel = (product) => {
-    if (!product.isActive) {
-      return 'Temporary not available'
-    }
-
+    if (!product.isActive) return 'Temporary not available'
     return 'Available'
+  }
+
+  const getDiscountedPrice = (product) => {
+    const price = Number(product.price || 0)
+    const discount = Number(product.discount || 0)
+    if (!discount) return null
+    if (product.discountType === 'flat') return Math.max(0, price - discount)
+    return price * (1 - discount / 100)
   }
 
   const filteredProducts = useMemo(() => products, [products])
@@ -192,7 +197,16 @@ function ProductsPage() {
                   <p className="mt-2 text-sm text-slate-600 line-clamp-2">{product.description || 'No description available.'}</p>
 
                   <div className="mt-4 flex items-center justify-between">
-                    <p className="text-xl font-black text-slate-900">₹{Number(product.price || 0).toFixed(2)}</p>
+                    <div>
+                      {getDiscountedPrice(product) === null ? (
+                        <p className="text-xl font-black text-slate-900">₹{Number(product.price || 0).toFixed(2)}</p>
+                      ) : (
+                        <>
+                          <p className="text-xl font-black text-slate-900">₹{getDiscountedPrice(product).toFixed(2)}</p>
+                          <p className="text-xs text-slate-400 line-through">₹{Number(product.price || 0).toFixed(2)}</p>
+                        </>
+                      )}
+                    </div>
                     <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${product.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
                       {getStatusLabel(product)}
                     </span>

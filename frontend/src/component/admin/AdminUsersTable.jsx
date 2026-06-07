@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { MagnifyingGlass, Pencil, Trash, X, Check, LockSimple, LockSimpleOpen, Eye } from '@phosphor-icons/react'
+import { MagnifyingGlass, Pencil, Trash, X, Check, LockSimple, LockSimpleOpen, Eye, Package, Wallet, Truck, Star } from '@phosphor-icons/react'
 import { API_PATHS, buildApiUrl } from '../../config/apiEndpoints'
 
 const ROLE_STYLES = {
@@ -16,10 +16,42 @@ function fmt(v) {
 
 function DetailModal({ user, onClose }) {
   const isDelivery = user.role === 'delivery'
+  const token = localStorage.getItem('authToken')
+  const [orders, setOrders] = useState([])
+  const [ordersLoading, setOrdersLoading] = useState(true)
+
+  useEffect(() => {
+    fetch(buildApiUrl(API_PATHS.orders.all), { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((d) => {
+        const all = d.orders || []
+        if (isDelivery) {
+          setOrders(all.filter((o) => {
+            const pid = o.assignedDeliveryPartner?._id || o.assignedDeliveryPartner
+            return pid === user.id || pid === user._id
+          }))
+        } else {
+          setOrders(all.filter((o) => {
+            const uid = o.userId?._id || o.userId || o.user?._id || o.user
+            return uid === user.id || uid === user._id
+          }))
+        }
+      })
+      .catch(() => {})
+      .finally(() => setOrdersLoading(false))
+  }, [user.id, user._id, isDelivery, token])
+
+  const totalOrders = orders.length
+  const deliveredOrders = orders.filter((o) => o.orderStatus === 'delivered').length
+  const totalSpent = orders.filter((o) => o.orderStatus === 'delivered').reduce((s, o) => s + Number(o.totalAmount || 0), 0)
+  const totalEarnings = isDelivery
+    ? orders.filter((o) => o.orderStatus === 'delivered').reduce((s, o) => s + Number(o.deliveryEarnings || 0), 0)
+    : 0
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
       <div className="w-full max-w-lg rounded-xl border border-gray-200 bg-white shadow-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4 sticky top-0 bg-white">
+        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4 sticky top-0 bg-white z-10">
           <h2 className="text-base font-semibold text-gray-900">{isDelivery ? 'Delivery Partner Details' : 'Customer Details'}</h2>
           <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X size={16} /></button>
         </div>
@@ -34,6 +66,33 @@ function DetailModal({ user, onClose }) {
               <p className="text-sm text-gray-500">{user.email}</p>
               <span className={`mt-1 inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium capitalize ${ROLE_STYLES[user.role] || ROLE_STYLES.user}`}>{user.role}</span>
             </div>
+          </div>
+
+          {/* Stats cards */}
+          <div className={`grid gap-3 ${isDelivery ? 'grid-cols-3' : 'grid-cols-3'}`}>
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center">
+              <Package size={16} className="mx-auto mb-1 text-blue-500" weight="fill" />
+              <p className="text-lg font-bold text-gray-900">{ordersLoading ? '…' : totalOrders}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Total Orders</p>
+            </div>
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-center">
+              <Star size={16} className="mx-auto mb-1 text-emerald-500" weight="fill" />
+              <p className="text-lg font-bold text-emerald-700">{ordersLoading ? '…' : deliveredOrders}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Delivered</p>
+            </div>
+            {isDelivery ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-center">
+                <Truck size={16} className="mx-auto mb-1 text-amber-500" weight="fill" />
+                <p className="text-lg font-bold text-amber-700">{ordersLoading ? '…' : `₹${totalEarnings.toFixed(0)}`}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Earned</p>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 text-center">
+                <Wallet size={16} className="mx-auto mb-1 text-violet-500" weight="fill" />
+                <p className="text-lg font-bold text-violet-700">{ordersLoading ? '…' : `₹${totalSpent.toFixed(0)}`}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Total Spent</p>
+              </div>
+            )}
           </div>
 
           {/* Contact & Basic Info */}
@@ -60,6 +119,39 @@ function DetailModal({ user, onClose }) {
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600 mb-1">Wallet Balance</p>
               <p className="text-2xl font-bold text-emerald-700">₹{Number(user.wallet?.balance || 0).toFixed(2)}</p>
+            </div>
+          )}
+
+          {/* Delivery partner wallet/earnings */}
+          {isDelivery && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-amber-600 mb-1">Wallet Balance</p>
+              <p className="text-2xl font-bold text-amber-700">₹{Number(user.wallet?.balance || 0).toFixed(2)}</p>
+            </div>
+          )}
+
+          {/* Recent orders */}
+          {!ordersLoading && orders.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                Recent Orders ({orders.length})
+              </p>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {orders.slice(0, 8).map((o) => (
+                  <div key={o._id} className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs">
+                    <div>
+                      <p className="font-mono font-semibold text-gray-700">{o.orderNumber}</p>
+                      <p className="text-gray-500">{fmt(o.createdAt)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold text-gray-900">₹{Number(o.totalAmount).toFixed(2)}</p>
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${o.orderStatus === 'delivered' ? 'bg-emerald-100 text-emerald-700' : o.orderStatus === 'cancelled' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {o.orderStatus}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

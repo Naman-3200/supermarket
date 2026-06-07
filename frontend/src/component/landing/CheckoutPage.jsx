@@ -1,13 +1,115 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Truck, CreditCard, CheckCircle, X, LockKey, ArrowLeft, Plus, MapPin, Wallet } from '@phosphor-icons/react'
+import { Truck, CreditCard, CheckCircle, X, LockKey, ArrowLeft, Plus, MapPin, Wallet, NavigationArrow } from '@phosphor-icons/react'
 import Footer from './Footer'
 import Navbar from './Navbar'
 import { API_PATHS, buildApiUrl } from '../../config/apiEndpoints'
 
 const MIN_ORDER = 99
-const FREE_DELIVERY_THRESHOLD = 499
-const DELIVERY_CHARGE = 40
+
+// ─── Embedded Location Picker Map ─────────────────────────────────────────────
+
+function LocationPickerMap({ onLocationSelect }) {
+  const mapContainerRef = useRef(null)
+  const mapRef = useRef(null)
+  const markerRef = useRef(null)
+  const [leafletReady, setLeafletReady] = useState(false)
+  const [gettingLocation, setGettingLocation] = useState(false)
+
+  useEffect(() => {
+    if (!document.querySelector('#leaflet-css')) {
+      const link = document.createElement('link')
+      link.id = 'leaflet-css'
+      link.rel = 'stylesheet'
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+      document.head.appendChild(link)
+    }
+    if (window.L) { setLeafletReady(true); return }
+    const script = document.createElement('script')
+    script.id = 'leaflet-js'
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+    script.onload = () => setLeafletReady(true)
+    document.body.appendChild(script)
+  }, [])
+
+  useEffect(() => {
+    if (!leafletReady || !mapContainerRef.current || mapRef.current) return
+    const L = window.L
+    const defaultLat = 19.076, defaultLng = 72.8777
+    const map = L.map(mapContainerRef.current).setView([defaultLat, defaultLng], 13)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19,
+    }).addTo(map)
+    const icon = L.divIcon({
+      html: '<div style="width:28px;height:28px;background:#059669;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)"></div>',
+      iconSize: [28, 28], iconAnchor: [14, 28], className: '',
+    })
+    const marker = L.marker([defaultLat, defaultLng], { draggable: true, icon }).addTo(map)
+    marker.on('dragend', async (e) => {
+      const { lat, lng } = e.target.getLatLng()
+      await reverseGeocode(lat, lng)
+    })
+    map.on('click', async (e) => {
+      const { lat, lng } = e.latlng
+      marker.setLatLng([lat, lng])
+      await reverseGeocode(lat, lng)
+    })
+    mapRef.current = map
+    markerRef.current = marker
+  }, [leafletReady])
+
+  const reverseGeocode = async (lat, lng) => {
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`)
+      const data = await res.json()
+      if (data?.address && onLocationSelect) {
+        const a = data.address
+        const road = [a.road, a.neighbourhood, a.suburb].filter(Boolean).join(', ')
+        onLocationSelect({
+          addressLine: road || data.display_name?.split(',')[0] || '',
+          city: a.city || a.town || a.village || a.county || '',
+          state: a.state || '',
+          pincode: a.postcode || '',
+        })
+      }
+    } catch (_) {}
+  }
+
+  const handleCurrentLocation = () => {
+    if (!navigator.geolocation) { alert('Geolocation not supported by your browser'); return }
+    setGettingLocation(true)
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      const { latitude: lat, longitude: lng } = pos.coords
+      if (mapRef.current && markerRef.current) {
+        mapRef.current.setView([lat, lng], 16)
+        markerRef.current.setLatLng([lat, lng])
+        await reverseGeocode(lat, lng)
+      }
+      setGettingLocation(false)
+    }, () => {
+      setGettingLocation(false)
+      alert('Could not get your location. Please allow location access in your browser.')
+    }, { enableHighAccuracy: true, timeout: 8000 })
+  }
+
+  return (
+    <div className="space-y-2 mt-3">
+      <button type="button" onClick={handleCurrentLocation} disabled={gettingLocation}
+        className="flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 transition-colors">
+        <NavigationArrow size={15} weight="fill" />
+        {gettingLocation ? 'Getting location…' : 'Use Current Location'}
+      </button>
+      {!leafletReady && (
+        <div className="flex h-64 items-center justify-center rounded-xl bg-gray-100 text-sm text-gray-500">
+          <span className="h-5 w-5 animate-spin rounded-full border-2 border-gray-400 border-t-transparent mr-2" /> Loading map…
+        </div>
+      )}
+      <div ref={mapContainerRef} style={{ height: '280px', borderRadius: '12px', display: leafletReady ? 'block' : 'none', zIndex: 0 }} />
+      <p className="text-xs text-gray-500">Click on the map or drag the pin to set your delivery location. Fields will auto-fill.</p>
+    </div>
+  )
+}
 
 function RazorpayModal({ amount, onSuccess, onClose, authUser }) {
   const [processing, setProcessing] = useState(false)
@@ -114,6 +216,7 @@ function CheckoutPage() {
   const [savedAddresses, setSavedAddresses] = useState([])
   const [selectedAddress, setSelectedAddress] = useState(null)
   const [showAddressForm, setShowAddressForm] = useState(false)
+  const [showMap, setShowMap] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState('cod')
   const [walletBalance, setWalletBalance] = useState(0)
   const [useWallet, setUseWallet] = useState(false)
@@ -124,8 +227,9 @@ function CheckoutPage() {
   const [placing, setPlacing] = useState(false)
   const [error, setError] = useState('')
   const [formErrors, setFormErrors] = useState({})
+  const [deliverySettings, setDeliverySettings] = useState({ deliveryCharge: 40, freeDeliveryThreshold: 499, freeDeliveryEnabled: true })
 
-  const [form, setForm] = useState({ fullName: '', phone: '', addressLine: '', city: '', state: '', pincode: '' })
+  const [form, setForm] = useState({ fullName: '', phone: '', addressLine: '', city: '', state: '', pincode: '', label: 'home' })
 
   useEffect(() => {
     const storedUser = localStorage.getItem('authUser')
@@ -157,6 +261,17 @@ function CheckoutPage() {
   }, [navigate])
 
   useEffect(() => {
+    fetch(buildApiUrl(API_PATHS.settings.get))
+      .then((r) => r.json())
+      .then((d) => setDeliverySettings({
+        deliveryCharge: d.deliveryCharge ?? 40,
+        freeDeliveryThreshold: d.freeDeliveryThreshold ?? 499,
+        freeDeliveryEnabled: d.freeDeliveryEnabled !== false,
+      }))
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
     try {
       const raw = localStorage.getItem('supermarketCart')
       const items = raw ? JSON.parse(raw) : []
@@ -168,7 +283,11 @@ function CheckoutPage() {
   }, [navigate])
 
   const subtotal = useMemo(() => cartItems.reduce((s, i) => s + Number(i.price || 0) * Number(i.quantity || 1), 0), [cartItems])
-  const deliveryCharge = subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_CHARGE
+  const deliveryCharge = useMemo(() => {
+    if (!deliverySettings.freeDeliveryEnabled) return 0
+    if (subtotal >= deliverySettings.freeDeliveryThreshold) return 0
+    return deliverySettings.deliveryCharge
+  }, [deliverySettings, subtotal])
   const walletUsed = useWallet ? Math.min(walletBalance, Math.max(0, subtotal + deliveryCharge - couponDiscount)) : 0
   const total = Math.max(0, subtotal + deliveryCharge - couponDiscount - walletUsed)
 
@@ -304,6 +423,30 @@ function CheckoutPage() {
 
               {(showAddressForm || savedAddresses.length === 0) && (
                 <div className="grid gap-4">
+                  {/* Map toggle */}
+                  <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-emerald-800">
+                      <MapPin size={15} weight="fill" /> Pick location on map
+                    </div>
+                    <button type="button" onClick={() => setShowMap((v) => !v)}
+                      className={`relative h-6 w-11 rounded-full transition ${showMap ? 'bg-emerald-600' : 'bg-gray-300'}`}>
+                      <div className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${showMap ? 'left-5' : 'left-0.5'}`} />
+                    </button>
+                  </div>
+                  {showMap && (
+                    <LocationPickerMap
+                      onLocationSelect={(loc) => {
+                        setForm((p) => ({
+                          ...p,
+                          addressLine: loc.addressLine || p.addressLine,
+                          city: loc.city || p.city,
+                          state: loc.state || p.state,
+                          pincode: loc.pincode || p.pincode,
+                        }))
+                        setFormErrors({})
+                      }}
+                    />
+                  )}
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
                       <label className="mb-1.5 block text-xs font-semibold text-slate-600">Full Name *</label>

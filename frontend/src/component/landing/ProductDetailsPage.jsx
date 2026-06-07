@@ -10,6 +10,18 @@ function readLocalArray(key) {
 }
 function writeLocalArray(key, value) { localStorage.setItem(key, JSON.stringify(value)) }
 
+function calcDiscountedPrice(product) {
+  if (!product?.discount) return null
+  const price = Number(product.price || 0)
+  const discount = Number(product.discount)
+  if (product.discountType === 'flat') return Math.max(0, price - discount)
+  return price * (1 - discount / 100)
+}
+
+function discountLabel(product) {
+  return product.discountType === 'flat' ? `₹${product.discount} OFF` : `${product.discount}% OFF`
+}
+
 function StarRating({ value, onChange, size = 20 }) {
   const [hovered, setHovered] = useState(0)
   const active = hovered || value
@@ -293,7 +305,7 @@ function ProductDetailsPage() {
     setTimeout(() => setNotice(''), 2000)
   }
 
-  const discountedPrice = product?.discount ? product.price - (product.price * product.discount) / 100 : null
+  const discountedPrice = calcDiscountedPrice(product)
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-emerald-50 via-lime-50 to-white text-slate-900">
@@ -345,7 +357,9 @@ function ProductDetailsPage() {
                     <>
                       <span className="text-3xl font-black text-slate-900">₹{discountedPrice.toFixed(2)}</span>
                       <span className="text-lg text-slate-400 line-through">₹{product.price}</span>
-                      <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-bold text-rose-700">{product.discount}% OFF</span>
+                      <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-bold text-rose-700">
+                        {discountLabel(product)}
+                      </span>
                     </>
                   ) : (
                     <span className="text-3xl font-black text-slate-900">₹{product.price}</span>

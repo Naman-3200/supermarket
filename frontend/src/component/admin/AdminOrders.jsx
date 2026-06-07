@@ -18,18 +18,40 @@ function AssignModal({ order, deliveryPartners, onAssign, onClose }) {
   const [selectedId, setSelectedId] = useState(
     order.assignedDeliveryPartner ? order.assignedDeliveryPartner._id || order.assignedDeliveryPartner : '',
   )
+  const [earningsType, setEarningsType] = useState('flat') // 'flat' | 'percent'
+  const [earningsValue, setEarningsValue] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  // Only allow online partners to be assigned
+  const onlinePartners = deliveryPartners.filter((p) => p.deliveryStatus === 'online' && !p.isBlocked)
+  const offlinePartners = deliveryPartners.filter((p) => p.deliveryStatus !== 'online' || p.isBlocked)
+
+  const computedEarnings = (() => {
+    const val = parseFloat(earningsValue) || 0
+    if (!val) return null
+    if (earningsType === 'percent') return parseFloat(((order.totalAmount * val) / 100).toFixed(2))
+    return val
+  })()
+
   const handleAssign = async () => {
+    if (selectedId) {
+      const partner = deliveryPartners.find((p) => p.id === selectedId)
+      if (partner && partner.deliveryStatus !== 'online') {
+        setError('This partner is offline. Please select an online partner.')
+        return
+      }
+    }
     setSaving(true)
     setError('')
     const token = localStorage.getItem('authToken')
     try {
+      const body = { deliveryPartnerId: selectedId || null }
+      if (selectedId && earningsValue) body.deliveryEarnings = computedEarnings
       const res = await fetch(buildApiUrl(API_PATHS.orders.assign.replace(':id', order._id)), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ deliveryPartnerId: selectedId || null }),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.message || 'Failed to assign'); setSaving(false); return }
@@ -54,7 +76,7 @@ function AssignModal({ order, deliveryPartners, onAssign, onClose }) {
           <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm">
             <p className="font-medium text-gray-900">{order.deliveryAddress?.fullName}</p>
             <p className="mt-0.5 text-xs text-gray-500">{order.deliveryAddress?.addressLine}, {order.deliveryAddress?.city}</p>
-            <p className="mt-2 text-sm font-semibold text-gray-900">₹{Number(order.totalAmount).toFixed(2)}</p>
+            <p className="mt-2 text-sm font-semibold text-gray-900">Order Total: ₹{Number(order.totalAmount).toFixed(2)}</p>
           </div>
           {order.assignedDeliveryPartner && (
             <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
@@ -62,19 +84,75 @@ function AssignModal({ order, deliveryPartners, onAssign, onClose }) {
               Currently: <span className="font-semibold">{order.assignedDeliveryPartner.username || 'A partner'}</span>
             </div>
           )}
+
+          {/* Partner Select - only online partners */}
           <div>
-            <label htmlFor="partner-select" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">Select Partner</label>
+            <label htmlFor="partner-select" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Select Online Partner
+            </label>
+            {onlinePartners.length === 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 mb-2">
+                No online delivery partners available right now.
+              </div>
+            )}
             <div className="relative">
               <select id="partner-select" value={selectedId} onChange={(e) => setSelectedId(e.target.value)}
                 className="w-full appearance-none rounded-lg border border-gray-300 bg-white px-3 py-2.5 pr-9 text-sm text-gray-900 focus:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900/10">
                 <option value="">— No partner / Unassign —</option>
-                {deliveryPartners.map((p) => (
-                  <option key={p.id} value={p.id}>{p.username} · {p.vehicleNumber || 'No vehicle'} · {p.phone}</option>
+                {onlinePartners.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    🟢 {p.username} · {p.vehicleNumber || 'No vehicle'} · {p.phone}
+                  </option>
                 ))}
+                {offlinePartners.length > 0 && (
+                  <optgroup label="── Offline / Unavailable (cannot assign) ──">
+                    {offlinePartners.map((p) => (
+                      <option key={p.id} value={p.id} disabled>
+                        ⚫ {p.username} ({p.isBlocked ? 'Blocked' : p.deliveryStatus || 'offline'})
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
               <CaretDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
             </div>
           </div>
+
+          {/* Earnings */}
+          {selectedId && (
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Partner Earnings (optional)
+              </label>
+              <div className="flex gap-2">
+                <div className="flex rounded-lg border border-gray-300 overflow-hidden text-xs font-semibold">
+                  <button type="button" onClick={() => setEarningsType('flat')}
+                    className={`px-3 py-2 transition-colors ${earningsType === 'flat' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                    ₹ Flat
+                  </button>
+                  <button type="button" onClick={() => setEarningsType('percent')}
+                    className={`px-3 py-2 transition-colors ${earningsType === 'percent' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                    % of Total
+                  </button>
+                </div>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={earningsValue}
+                  onChange={(e) => setEarningsValue(e.target.value)}
+                  placeholder={earningsType === 'flat' ? 'Amount in ₹' : 'Percentage %'}
+                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none"
+                />
+              </div>
+              {computedEarnings !== null && (
+                <p className="text-xs text-emerald-700 font-medium">
+                  Partner will earn: ₹{computedEarnings.toFixed(2)}
+                </p>
+              )}
+            </div>
+          )}
+
           {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose} className="flex-1 rounded-lg border border-gray-300 bg-white py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>

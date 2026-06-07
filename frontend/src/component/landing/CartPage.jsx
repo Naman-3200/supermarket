@@ -6,9 +6,6 @@ import Navbar from './Navbar'
 import { API_PATHS, buildApiUrl } from '../../config/apiEndpoints'
 
 const MIN_ORDER = 99
-const FREE_DELIVERY_THRESHOLD = 499
-const DELIVERY_CHARGE = 40
-const TAX_RATE = 0.05
 
 function readLocalArray(key) {
   try { return JSON.parse(localStorage.getItem(key)) || [] } catch { return [] }
@@ -26,6 +23,7 @@ function CartPage() {
   const [couponData, setCouponData] = useState(null)
   const [couponError, setCouponError] = useState('')
   const [couponLoading, setCouponLoading] = useState(false)
+  const [deliverySettings, setDeliverySettings] = useState({ deliveryCharge: 40, freeDeliveryThreshold: 499, freeDeliveryEnabled: true })
 
   useEffect(() => {
     const storedUser = localStorage.getItem('authUser')
@@ -40,6 +38,17 @@ function CartPage() {
       localStorage.removeItem('authToken')
     }
   }, [navigate])
+
+  useEffect(() => {
+    fetch(buildApiUrl(API_PATHS.settings.get))
+      .then((r) => r.json())
+      .then((d) => setDeliverySettings({
+        deliveryCharge: d.deliveryCharge ?? 40,
+        freeDeliveryThreshold: d.freeDeliveryThreshold ?? 499,
+        freeDeliveryEnabled: d.freeDeliveryEnabled !== false,
+      }))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     setCartItems(readLocalArray('supermarketCart'))
@@ -97,13 +106,25 @@ function CartPage() {
 
   const removeSaved = (id) => syncSaved(savedItems.filter((i) => i._id !== id))
 
+  const getEffectivePrice = (item) => {
+    const price = Number(item.price || 0)
+    const discount = Number(item.discount || 0)
+    if (!discount) return price
+    if (item.discountType === 'flat') return Math.max(0, price - discount)
+    return price * (1 - discount / 100)
+  }
+
   const subtotal = useMemo(
-    () => cartItems.reduce((t, i) => t + Number(i.price || 0) * Number(i.quantity || 1), 0),
+    () => cartItems.reduce((t, i) => t + getEffectivePrice(i) * Number(i.quantity || 1), 0),
     [cartItems],
   )
 
-  const deliveryCharge = subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : cartItems.length > 0 ? DELIVERY_CHARGE : 0
-  const tax = parseFloat((subtotal * TAX_RATE).toFixed(2))
+  const deliveryCharge = useMemo(() => {
+    if (cartItems.length === 0) return 0
+    if (!deliverySettings.freeDeliveryEnabled) return 0
+    if (subtotal >= deliverySettings.freeDeliveryThreshold) return 0
+    return deliverySettings.deliveryCharge
+  }, [deliverySettings, subtotal, cartItems.length])
 
   const couponDiscount = useMemo(() => {
     if (!couponData) return 0
@@ -113,7 +134,7 @@ function CartPage() {
     return 0
   }, [couponData, subtotal, deliveryCharge])
 
-  const total = Math.max(0, subtotal + deliveryCharge + tax - couponDiscount)
+  const total = Math.max(0, subtotal + deliveryCharge - couponDiscount)
 
   const applyCoupon = async () => {
     if (!couponCode.trim()) return
@@ -194,7 +215,12 @@ function CartPage() {
                         <p className="font-bold text-slate-900 hover:text-emerald-700">{item.name}</p>
                       </Link>
                       <p className="mt-0.5 text-xs text-slate-500">{item.unit || ''}</p>
-                      <p className="mt-1 text-sm font-semibold text-emerald-700">₹{Number(item.price || 0).toFixed(2)} each</p>
+                      <p className="mt-1 text-sm font-semibold text-emerald-700">
+                        ₹{getEffectivePrice(item).toFixed(2)} each
+                        {Number(item.discount || 0) > 0 && (
+                          <span className="ml-1 text-xs text-slate-400 line-through font-normal">₹{Number(item.price || 0).toFixed(2)}</span>
+                        )}
+                      </p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         <button type="button" onClick={() => saveForLater(item._id)}
                           className="flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-emerald-700">
@@ -208,7 +234,7 @@ function CartPage() {
                     </div>
                     <div className="flex flex-col items-end gap-2">
                       <p className="text-base font-black text-slate-900">
-                        ₹{(Number(item.price || 0) * Number(item.quantity || 1)).toFixed(2)}
+                        ₹{(getEffectivePrice(item) * Number(item.quantity || 1)).toFixed(2)}
                       </p>
                       <div className="flex items-center rounded-full border border-slate-200 bg-slate-50">
                         <button type="button" onClick={() => updateQuantity(item._id, -1)}
@@ -267,9 +293,8 @@ function CartPage() {
                 <div className="space-y-2.5 text-sm">
                   {[
                     ['Items', `${itemCount} item${itemCount !== 1 ? 's' : ''}`],
-                    ['Subtotal', `₹${subtotal.toFixed(2)}`],
+                    ['Subtotal (incl. GST)', `₹${subtotal.toFixed(2)}`],
                     ['Delivery', deliveryCharge === 0 ? 'Free' : `₹${deliveryCharge}`],
-                    ['Tax (5% GST)', `₹${tax.toFixed(2)}`],
                   ].map(([label, val]) => (
                     <div key={label} className="flex items-center justify-between">
                       <span className="text-slate-600">{label}</span>
@@ -282,9 +307,9 @@ function CartPage() {
                       <span className="font-semibold">–₹{couponDiscount.toFixed(2)}</span>
                     </div>
                   )}
-                  {subtotal >= FREE_DELIVERY_THRESHOLD - subtotal && subtotal < FREE_DELIVERY_THRESHOLD && (
+                  {deliverySettings.freeDeliveryEnabled && subtotal < deliverySettings.freeDeliveryThreshold && subtotal > 0 && (
                     <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                      Add ₹{(FREE_DELIVERY_THRESHOLD - subtotal).toFixed(0)} more for free delivery!
+                      Add ₹{(deliverySettings.freeDeliveryThreshold - subtotal).toFixed(0)} more for free delivery!
                     </p>
                   )}
                   <div className="flex items-center justify-between border-t border-slate-100 pt-2.5 text-base font-black text-slate-900">

@@ -15,7 +15,7 @@ function AdminProducts() {
   const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [formData, setFormData] = useState({
-    name: '', description: '', price: '', discount: '0', unit: 'kg',
+    name: '', description: '', price: '', discount: '0', discountType: 'percent', unit: 'kg',
     categoryId: '', subCategoryId: '', isActive: true,
     sku: '', hsnCode: '', gstRate: '0', stock: '0', lowStockThreshold: '10',
   })
@@ -87,17 +87,22 @@ function AdminProducts() {
       }
       if (!uploadedImageUrls.length) throw new Error('Please upload at least one product image')
 
+      const rawPrice = Number.parseFloat(formData.price) || 0
+      const rawDiscount = Number.parseFloat(formData.discount) || 0
+      // For flat discount, store as percent-equivalent for consistency; keep discountType+discountValue on payload
       const payload = {
         name: formData.name, description: formData.description,
-        price: parseFloat(formData.price), discount: parseFloat(formData.discount) || 0,
+        price: rawPrice,
+        discount: rawDiscount,
+        discountType: formData.discountType || 'percent',
         unit: formData.unit, categoryId: formData.categoryId,
         subCategoryId: formData.subCategoryId || undefined,
         isActive: formData.isActive, images: uploadedImageUrls,
         sku: formData.sku || '',
         hsnCode: formData.hsnCode || '',
         gstRate: Number.parseFloat(formData.gstRate) || 0,
-        stock: parseInt(formData.stock, 10) || 0,
-        lowStockThreshold: parseInt(formData.lowStockThreshold, 10) || 10,
+        stock: Number.parseInt(formData.stock, 10) || 0,
+        lowStockThreshold: Number.parseInt(formData.lowStockThreshold, 10) || 10,
       }
 
       const endpoint = editingProductId
@@ -112,7 +117,7 @@ function AdminProducts() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.message || 'Unable to save product')
 
-      setFormData({ name: '', description: '', price: '', discount: '0', unit: 'kg', categoryId: '', subCategoryId: '', isActive: true, sku: '', hsnCode: '', gstRate: '0', stock: '0', lowStockThreshold: '10' })
+      setFormData({ name: '', description: '', price: '', discount: '0', discountType: 'percent', unit: 'kg', categoryId: '', subCategoryId: '', isActive: true, sku: '', hsnCode: '', gstRate: '0', stock: '0', lowStockThreshold: '10' })
       setProductImageFiles([])
       setExistingImageUrls([])
       setEditingProductId('')
@@ -132,6 +137,7 @@ function AdminProducts() {
     setFormData({
       name: product.name || '', description: product.description || '',
       price: product.price ?? '', discount: product.discount ?? '0',
+      discountType: product.discountType || 'percent',
       unit: product.unit || 'kg', categoryId, subCategoryId,
       isActive: product.isActive ?? true,
       sku: product.sku || '', hsnCode: product.hsnCode || '', gstRate: String(product.gstRate ?? 0),
@@ -170,7 +176,7 @@ function AdminProducts() {
 
   const handleCloseForm = () => {
     setShowForm(false)
-    setFormData({ name: '', description: '', price: '', discount: '0', unit: 'kg', categoryId: '', subCategoryId: '', isActive: true, sku: '', hsnCode: '', gstRate: '0', stock: '0', lowStockThreshold: '10' })
+    setFormData({ name: '', description: '', price: '', discount: '0', discountType: 'percent', unit: 'kg', categoryId: '', subCategoryId: '', isActive: true, sku: '', hsnCode: '', gstRate: '0', stock: '0', lowStockThreshold: '10' })
     setProductImageFiles([])
     setExistingImageUrls([])
     setEditingProductId('')
@@ -316,9 +322,32 @@ function AdminProducts() {
               </div>
               {/* Discount */}
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500" htmlFor="prod-discount">Discount (%)</label>
-                <input id="prod-discount" name="discount" type="number" step="0.01" min="0" max="100" placeholder="0" value={formData.discount} onChange={handleChange}
-                  className="mt-1.5 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
+                <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Discount</label>
+                <div className="mt-1.5 flex overflow-hidden rounded-lg border border-gray-300 focus-within:border-gray-400 focus-within:ring-2 focus-within:ring-gray-900/10">
+                  <button type="button"
+                    onClick={() => setFormData((p) => ({ ...p, discountType: 'percent' }))}
+                    className={`px-3 py-2 text-xs font-bold border-r border-gray-300 transition-colors ${formData.discountType === 'percent' ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
+                    %
+                  </button>
+                  <button type="button"
+                    onClick={() => setFormData((p) => ({ ...p, discountType: 'flat' }))}
+                    className={`px-3 py-2 text-xs font-bold border-r border-gray-300 transition-colors ${formData.discountType === 'flat' ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
+                    ₹
+                  </button>
+                  <input name="discount" type="number" step="0.01" min="0"
+                    max={formData.discountType === 'percent' ? '100' : undefined}
+                    placeholder="0" value={formData.discount} onChange={handleChange}
+                    className="flex-1 px-3 py-2 text-sm focus:outline-none" />
+                </div>
+                {formData.price && Number(formData.discount) > 0 && (
+                  <p className="mt-1 text-xs text-emerald-600">
+                    Discounted: ₹{
+                      formData.discountType === 'percent'
+                        ? (Number(formData.price) * (1 - Number(formData.discount) / 100)).toFixed(2)
+                        : Math.max(0, Number(formData.price) - Number(formData.discount)).toFixed(2)
+                    }
+                  </p>
+                )}
               </div>
               {/* Stock */}
               <div>
@@ -411,11 +440,26 @@ function AdminProducts() {
                         <div>{product.sku || '—'}</div>
                         {product.hsnCode && <div className="text-gray-400">HSN: {product.hsnCode}</div>}
                       </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">{product.gstRate > 0 ? `${product.gstRate}%` : 'Nil'}</td>
+                      <td className="px-4 py-3 text-xs">
+                        {Number(product.gstRate) > 0 ? (
+                          <div className="text-gray-700 font-medium">{product.gstRate}%<div className="text-gray-400 font-normal">incl. in price</div></div>
+                        ) : <span className="text-gray-400">Nil</span>}
+                      </td>
                       <td className="px-4 py-3 text-gray-500">{getCategoryName(product.categoryId)}</td>
-                      <td className="px-4 py-3 text-gray-700">
-                        ₹{Number(product.price || 0).toFixed(2)}
-                        {product.discount > 0 && <span className="ml-1 text-xs text-emerald-600">(-{product.discount}%)</span>}
+                      <td className="px-4 py-3 text-gray-700 text-sm">
+                        {Number(product.discount) > 0 ? (
+                          <div>
+                            <span className="line-through text-gray-400 text-xs">₹{Number(product.price || 0).toFixed(2)}</span>
+                            <span className="ml-1 font-medium">₹{
+                              product.discountType === 'flat'
+                                ? Math.max(0, Number(product.price) - Number(product.discount)).toFixed(2)
+                                : (Number(product.price) * (1 - Number(product.discount) / 100)).toFixed(2)
+                            }</span>
+                            <div className="text-xs text-emerald-600">
+                              {product.discountType === 'flat' ? `-₹${product.discount} off` : `-${product.discount}%`}
+                            </div>
+                          </div>
+                        ) : <span>₹{Number(product.price || 0).toFixed(2)}</span>}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium border ${isOut ? 'bg-red-50 text-red-700 border-red-200' : isLow ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-gray-50 text-gray-700 border-gray-200'}`}>
