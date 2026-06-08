@@ -9,7 +9,7 @@ import { API_PATHS, buildApiUrl } from '../../config/apiEndpoints'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const DELIVERY_FEE = 30
+const DELIVERY_FEE = 30 // fallback only — actual earnings come from order.deliveryEarnings
 
 const STATUS_STYLES = {
   placed: 'bg-blue-50 text-blue-700 border-blue-200',
@@ -47,12 +47,113 @@ function fmtTime(d) {
   return new Date(d).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
 }
 
-const WAREHOUSE_LOCATION = 'Charni Road, Mumbai, Maharashtra 400004, India'
+const WAREHOUSE_LAT = 18.9543
+const WAREHOUSE_LNG = 72.8197
 
-function buildMapsUrl(addr) {
-  const origin = encodeURIComponent(WAREHOUSE_LOCATION)
-  const dest = encodeURIComponent(`${addr.addressLine}, ${addr.city}, ${addr.state} ${addr.pincode}`)
-  return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&travelmode=driving`
+// ─── Inline Navigation Map ─────────────────────────────────────────────────────
+
+function NavigationMapModal({ order, onClose }) {
+  const mapContainerRef = useRef(null)
+  const mapRef = useRef(null)
+  const [leafletReady, setLeafletReady] = useState(false)
+  const [status, setStatus] = useState('Loading map…')
+  const addr = order.deliveryAddress || {}
+
+  useEffect(() => {
+    if (!document.querySelector('#leaflet-css')) {
+      const link = document.createElement('link')
+      link.id = 'leaflet-css'
+      link.rel = 'stylesheet'
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+      document.head.appendChild(link)
+    }
+    if (window.L) { setLeafletReady(true); return }
+    const script = document.createElement('script')
+    script.id = 'leaflet-nav-js'
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+    script.onload = () => setLeafletReady(true)
+    script.onerror = () => setStatus('Failed to load map library.')
+    document.body.appendChild(script)
+  }, [])
+
+  useEffect(() => {
+    if (!leafletReady || !mapContainerRef.current || mapRef.current) return
+    const L = window.L
+    const map = L.map(mapContainerRef.current).setView([WAREHOUSE_LAT, WAREHOUSE_LNG], 13)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19,
+    }).addTo(map)
+
+    const warehouseIcon = L.divIcon({
+      html: '<div style="width:24px;height:24px;background:#059669;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;"><span style="color:white;font-size:12px;font-weight:bold;">W</span></div>',
+      iconSize: [24, 24], iconAnchor: [12, 12], className: '',
+    })
+    const destIcon = L.divIcon({
+      html: '<div style="width:28px;height:28px;background:#DC2626;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>',
+      iconSize: [28, 28], iconAnchor: [14, 28], className: '',
+    })
+
+    const warehouseMarker = L.marker([WAREHOUSE_LAT, WAREHOUSE_LNG], { icon: warehouseIcon })
+      .addTo(map)
+      .bindPopup('<strong>Warehouse</strong><br>Charni Road, Mumbai')
+
+    mapRef.current = map
+    setStatus('Locating delivery address…')
+
+    const query = `${addr.addressLine}, ${addr.city}, ${addr.state} ${addr.pincode}, India`
+    fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && data[0]) {
+          const lat = parseFloat(data[0].lat)
+          const lng = parseFloat(data[0].lon)
+          const destMarker = L.marker([lat, lng], { icon: destIcon })
+            .addTo(map)
+            .bindPopup(`<strong>${addr.fullName}</strong><br>${addr.addressLine}, ${addr.city}`)
+          const bounds = L.latLngBounds([[WAREHOUSE_LAT, WAREHOUSE_LNG], [lat, lng]])
+          map.fitBounds(bounds, { padding: [40, 40] })
+          L.polyline([[WAREHOUSE_LAT, WAREHOUSE_LNG], [lat, lng]], { color: '#059669', weight: 3, dashArray: '8,8' }).addTo(map)
+          setStatus('')
+        } else {
+          setStatus('Could not locate delivery address on map.')
+        }
+      })
+      .catch(() => setStatus('Error locating address.'))
+  }, [leafletReady])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Navigation</h2>
+            <p className="mt-0.5 text-xs text-gray-500">{addr.fullName} · {addr.addressLine}, {addr.city}</p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="p-4">
+          {status && <p className="mb-2 text-center text-xs text-gray-500">{status}</p>}
+          <div
+            ref={mapContainerRef}
+            style={{ height: '320px', borderRadius: '12px', display: leafletReady ? 'block' : 'none', zIndex: 0 }}
+          />
+          {!leafletReady && (
+            <div className="flex h-64 items-center justify-center rounded-xl bg-gray-100">
+              <span className="h-5 w-5 animate-spin rounded-full border-2 border-gray-400 border-t-transparent mr-2" />
+              <span className="text-sm text-gray-500">Loading map…</span>
+            </div>
+          )}
+          <div className="mt-3 rounded-lg bg-gray-50 px-4 py-3 text-xs text-gray-600">
+            <p><span className="font-semibold">🟢 Warehouse:</span> Charni Road, Mumbai</p>
+            <p className="mt-1"><span className="font-semibold">🔴 Delivery:</span> {addr.addressLine}, {addr.city}, {addr.state} – {addr.pincode}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ─── Small shared components ──────────────────────────────────────────────────
@@ -397,6 +498,7 @@ function OrderCard({ order, token, onStatusChange }) {
   const [error, setError] = useState('')
   const [showProofModal, setShowProofModal] = useState(false)
   const [showFailModal, setShowFailModal] = useState(false)
+  const [showNavMap, setShowNavMap] = useState(false)
 
   const updateStatus = async (newStatus) => {
     setUpdating(true)
@@ -444,6 +546,7 @@ function OrderCard({ order, token, onStatusChange }) {
 
   return (
     <>
+      {showNavMap && <NavigationMapModal order={order} onClose={() => setShowNavMap(false)} />}
       {showProofModal && (
         <ProofModal
           order={order}
@@ -495,15 +598,14 @@ function OrderCard({ order, token, onStatusChange }) {
                 <Phone size={12} weight="fill" className="text-emerald-600" />
                 Call
               </a>
-              <a
-                href={buildMapsUrl(order.deliveryAddress || {})}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
+                onClick={() => setShowNavMap(true)}
                 className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
               >
                 <MapPin size={12} weight="fill" className="text-blue-600" />
                 Navigate
-              </a>
+              </button>
             </div>
           </div>
 
@@ -667,7 +769,7 @@ function HomeSection({ orders, analytics, loading, deliveryUser, onSectionChange
           {/* Stats */}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard icon={Package} iconBg="bg-amber-50" iconColor="text-amber-600" label="Active Orders" value={analytics.activeOrders} sub="Assigned to you" />
-            <StatCard icon={CheckCircle} iconBg="bg-emerald-50" iconColor="text-emerald-600" label="Today Delivered" value={todayDelivered} sub={`₹${todayDelivered * DELIVERY_FEE} earned`} />
+            <StatCard icon={CheckCircle} iconBg="bg-emerald-50" iconColor="text-emerald-600" label="Today Delivered" value={todayDelivered} sub={`₹${analytics.todayEarnings ?? (todayDelivered * DELIVERY_FEE)} earned`} />
             <StatCard icon={Wallet} iconBg="bg-blue-50" iconColor="text-blue-600" label="This Week" value={analytics.weekDelivered} sub={`₹${analytics.weekEarnings} earned`} />
             <StatCard icon={ChartBar} iconBg="bg-violet-50" iconColor="text-violet-600" label="Total Delivered" value={analytics.totalDelivered} sub={`₹${analytics.totalEarnings} lifetime`} />
           </div>
@@ -715,7 +817,7 @@ function HomeSection({ orders, analytics, loading, deliveryUser, onSectionChange
               <h3 className="text-sm font-semibold text-gray-900 mb-4">This Week's Earnings</h3>
               <EarningsBarChart data={analytics.weeklyStats} />
               <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
-                <span>Last 7 days · ₹{DELIVERY_FEE}/delivery</span>
+                <span>Last 7 days earnings</span>
                 <button type="button" onClick={() => onSectionChange('earnings')} className="text-blue-600 hover:underline">
                   Details →
                 </button>
@@ -953,7 +1055,7 @@ function EarningsSection({ analytics, token }) {
       <div>
         <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Finance</p>
         <h2 className="mt-0.5 text-xl font-semibold text-gray-900">My Earnings</h2>
-        <p className="mt-0.5 text-sm text-gray-500">₹{DELIVERY_FEE} per delivered order. Updated in real time.</p>
+        <p className="mt-0.5 text-sm text-gray-500">Earnings per order set by admin. Updated in real time.</p>
       </div>
 
       {/* Summary cards */}
@@ -1025,7 +1127,7 @@ function EarningsSection({ analytics, token }) {
         <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 py-10 text-center">
           <Wallet size={32} weight="thin" className="mx-auto text-gray-300" />
           <p className="mt-2 text-sm text-gray-500">No earnings yet</p>
-          <p className="mt-1 text-xs text-gray-400">Complete deliveries to earn ₹{DELIVERY_FEE} per order</p>
+          <p className="mt-1 text-xs text-gray-400">Complete deliveries to start earning</p>
         </div>
       )}
 
@@ -1033,7 +1135,7 @@ function EarningsSection({ analytics, token }) {
       <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-xs text-gray-500">
         <p className="font-semibold text-gray-700 mb-1">Earnings Info</p>
         <ul className="space-y-1 list-disc list-inside">
-          <li>Flat rate of ₹{DELIVERY_FEE} per successfully delivered order.</li>
+          <li>Earnings per delivery are set by the admin for each order.</li>
           <li>Failed deliveries, cancellations, and rejected orders are not counted.</li>
           <li>Submit a withdrawal request to receive your earnings via UPI or bank transfer.</li>
         </ul>

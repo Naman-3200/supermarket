@@ -4,7 +4,7 @@ const SubCategory = require('../models/SubCategory')
 const asyncHandler = require('../utils/asyncHandler')
 
 const createProduct = asyncHandler(async (req, res) => {
-  const { name, description, price, discount, unit, categoryId, subCategoryId, images, isActive } = req.body
+  const { name, description, price, discount, discountType, unit, categoryId, subCategoryId, images, isActive } = req.body
   const normalizedSubCategoryId = String(subCategoryId || '').trim()
 
   if (!name || !price || !categoryId) {
@@ -38,6 +38,7 @@ const createProduct = asyncHandler(async (req, res) => {
     description: description || '',
     price,
     discount: discount || 0,
+    discountType: discountType || 'percent',
     unit: unit || 'kg',
     categoryId,
     subCategoryId: normalizedSubCategoryId || null,
@@ -45,6 +46,8 @@ const createProduct = asyncHandler(async (req, res) => {
     thumbnail: images[0],
     isActive: isActive !== undefined ? isActive : true,
     sku: req.body.sku ? String(req.body.sku).trim() : '',
+    hsnCode: req.body.hsnCode ? String(req.body.hsnCode).trim() : '',
+    gstRate: req.body.gstRate !== undefined ? Number(req.body.gstRate) : 0,
     stock: req.body.stock !== undefined ? Number(req.body.stock) : 0,
     lowStockThreshold: req.body.lowStockThreshold !== undefined ? Number(req.body.lowStockThreshold) : 10,
   })
@@ -103,7 +106,7 @@ const getProductById = asyncHandler(async (req, res) => {
 
 const updateProduct = asyncHandler(async (req, res) => {
   const { id } = req.params
-  const { name, description, price, discount, unit, images, isActive, subCategoryId, sku, stock, lowStockThreshold } = req.body
+  const { name, description, price, discount, discountType, unit, images, isActive, subCategoryId, sku, hsnCode, gstRate, stock, lowStockThreshold } = req.body
   const hasSubCategoryField = Object.prototype.hasOwnProperty.call(req.body, 'subCategoryId')
   const normalizedSubCategoryId = String(subCategoryId || '').trim()
 
@@ -126,12 +129,15 @@ const updateProduct = asyncHandler(async (req, res) => {
       description: description || undefined,
       price: price || undefined,
       discount: discount !== undefined ? discount : undefined,
+      discountType: discountType || undefined,
       unit: unit || undefined,
       subCategoryId: hasSubCategoryField ? (normalizedSubCategoryId || null) : undefined,
       images: Array.isArray(images) ? images : undefined,
       thumbnail: Array.isArray(images) && images.length ? images[0] : undefined,
       isActive: isActive !== undefined ? isActive : undefined,
       sku: sku !== undefined ? String(sku).trim() : undefined,
+      hsnCode: hsnCode !== undefined ? String(hsnCode).trim() : undefined,
+      gstRate: gstRate !== undefined ? Number(gstRate) : undefined,
       stock: stock !== undefined ? Number(stock) : undefined,
       lowStockThreshold: lowStockThreshold !== undefined ? Number(lowStockThreshold) : undefined,
     },

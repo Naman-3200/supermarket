@@ -293,7 +293,7 @@ function CartPage() {
                 <div className="space-y-2.5 text-sm">
                   {[
                     ['Items', `${itemCount} item${itemCount !== 1 ? 's' : ''}`],
-                    ['Subtotal (incl. GST)', `₹${subtotal.toFixed(2)}`],
+                    ['Subtotal', `₹${subtotal.toFixed(2)}`],
                     ['Delivery', deliveryCharge === 0 ? 'Free' : `₹${deliveryCharge}`],
                   ].map(([label, val]) => (
                     <div key={label} className="flex items-center justify-between">

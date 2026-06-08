@@ -8,12 +8,13 @@ const DEFAULT_DELIVERY_CHARGE = 40
 const DEFAULT_FREE_DELIVERY_THRESHOLD = 499
 
 async function getDeliverySettings() {
-  const settings = await Settings.find({ key: { $in: ['deliveryCharge', 'freeDeliveryThreshold'] } }).lean()
+  const settings = await Settings.find({ key: { $in: ['deliveryCharge', 'freeDeliveryThreshold', 'freeDeliveryEnabled'] } }).lean()
   const map = {}
   for (const s of settings) map[s.key] = s.value
   return {
     deliveryCharge: map.deliveryCharge ?? DEFAULT_DELIVERY_CHARGE,
     freeDeliveryThreshold: map.freeDeliveryThreshold ?? DEFAULT_FREE_DELIVERY_THRESHOLD,
+    freeDeliveryEnabled: map.freeDeliveryEnabled ?? true,
   }
 }
 
@@ -48,8 +49,8 @@ const createOrder = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: `Minimum order amount is ₹${MIN_ORDER_AMOUNT}` })
   }
 
-  const { deliveryCharge: DC, freeDeliveryThreshold: FDT } = await getDeliverySettings()
-  const deliveryCharge = validSubtotal >= FDT ? 0 : DC
+  const { deliveryCharge: DC, freeDeliveryThreshold: FDT, freeDeliveryEnabled } = await getDeliverySettings()
+  const deliveryCharge = !freeDeliveryEnabled || validSubtotal >= FDT ? 0 : DC
 
   const validCouponDiscount = Number(couponDiscount) || 0
   const validWalletUsed = Number(walletAmountUsed) || 0

@@ -282,7 +282,15 @@ function CheckoutPage() {
     }
   }, [navigate])
 
-  const subtotal = useMemo(() => cartItems.reduce((s, i) => s + Number(i.price || 0) * Number(i.quantity || 1), 0), [cartItems])
+  const getEffectivePrice = (item) => {
+    const price = Number(item.price || 0)
+    const discount = Number(item.discount || 0)
+    if (!discount) return price
+    if (item.discountType === 'flat') return Math.max(0, price - discount)
+    return price * (1 - discount / 100)
+  }
+
+  const subtotal = useMemo(() => cartItems.reduce((s, i) => s + getEffectivePrice(i) * Number(i.quantity || 1), 0), [cartItems])
   const deliveryCharge = useMemo(() => {
     if (!deliverySettings.freeDeliveryEnabled) return 0
     if (subtotal >= deliverySettings.freeDeliveryThreshold) return 0
@@ -333,7 +341,7 @@ function CheckoutPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          items: cartItems.map((i) => ({ productId: i._id, name: i.name, price: Number(i.price), quantity: Number(i.quantity || 1), thumbnail: i.thumbnail || '', unit: i.unit || '' })),
+          items: cartItems.map((i) => ({ productId: i._id, name: i.name, price: getEffectivePrice(i), quantity: Number(i.quantity || 1), thumbnail: i.thumbnail || '', unit: i.unit || '' })),
           deliveryAddress: getDeliveryAddress(),
           paymentMethod: paymentMethod === 'razorpay' ? 'razorpay' : paymentMethod,
           subtotal,
@@ -566,7 +574,7 @@ function CheckoutPage() {
               ))}
             </div>
             <div className="mt-4 space-y-2 border-t border-slate-100 pt-4 text-sm">
-              {[['Subtotal (incl. GST)', `₹${subtotal.toFixed(2)}`], ['Delivery', deliveryCharge === 0 ? 'Free' : `₹${deliveryCharge}`]].map(([l, v]) => (
+              {[['Subtotal', `₹${subtotal.toFixed(2)}`], ['Delivery', deliveryCharge === 0 ? 'Free' : `₹${deliveryCharge}`]].map(([l, v]) => (
                 <div key={l} className="flex justify-between text-slate-600">
                   <span>{l}</span>
                   <span className={`font-semibold ${v === 'Free' ? 'text-emerald-700' : ''}`}>{v}</span>

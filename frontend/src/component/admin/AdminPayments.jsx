@@ -35,7 +35,7 @@ function AdminPayments() {
   useEffect(() => {
     fetch(buildApiUrl(API_PATHS.orders.all), { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
-      .then((data) => { if (data.orders) setOrders(data.orders) else setError(data.message || 'Failed') })
+      .then((data) => { if (data.orders) { setOrders(data.orders) } else { setError(data.message || 'Failed') } })
       .catch(() => setError('Failed to load payments'))
       .finally(() => setLoading(false))
   }, [token])
